@@ -247,6 +247,19 @@ function bindEvents() {
   document.getElementById("resetDevice").addEventListener("click", () => {
     alert("Reset device akan disambungkan ke PATCH /api/admin/employees/{id}/reset-device.");
   });
+
+  // Delete modal events
+  document.getElementById("deleteCancelBtn").addEventListener("click", hideDeleteModal);
+  document.getElementById("deleteModal").addEventListener("click", (e) => {
+    if (e.target.id === "deleteModal") hideDeleteModal();
+  });
+  document.getElementById("deleteConfirmInput").addEventListener("input", (e) => {
+    document.getElementById("deleteConfirmBtn").disabled = e.target.value !== "HAPUS";
+  });
+  document.getElementById("deleteConfirmBtn").addEventListener("click", confirmDeleteEmployee);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") hideDeleteModal();
+  });
   document.getElementById("addShift").addEventListener("click", () => {
     alert("Form shift akan disambungkan ke POST /api/admin/shifts.");
   });
@@ -433,21 +446,81 @@ function renderMonthly() {
 }
 
 function renderEmployees() {
-  document.getElementById("employeeRows").innerHTML = employees
-    .map(
-      (employee) => `
-        <tr>
-          <td><strong>${employee.name}</strong><br><span class="muted">${employee.joinedDate}</span></td>
-          <td>${employee.email}</td>
-          <td>${employee.phone}</td>
-          <td>${employee.position}</td>
-          <td>${getShift(employee.defaultShiftId).name}</td>
-          <td>${employee.deviceId}</td>
-          <td><span class="badge complete">${employee.status}</span></td>
-        </tr>
-      `
-    )
-    .join("");
+  // Load from API
+  fetch("/absensi/api/admin/employees", { headers: adminAuthHeaders() })
+    .then((r) => r.ok ? r.json() : [])
+    .then((apiEmployees) => {
+      document.getElementById("employeeRows").innerHTML = apiEmployees.length
+        ? apiEmployees.map((emp) => `
+            <tr>
+              <td><strong>${emp.fullName}</strong><br><span class="muted">${emp.joinedDate}</span></td>
+              <td>${emp.email || "—"}</td>
+              <td>${emp.phone || "—"}</td>
+              <td>${emp.position || "—"}</td>
+              <td>${emp.shiftName || "—"}</td>
+              <td>${emp.registeredDeviceId || "<span class='muted'>Belum terdaftar</span>"}</td>
+              <td><span class="badge ${emp.status === "active" ? "complete" : "missing"}">${emp.status === "active" ? "Aktif" : "Nonaktif"}</span></td>
+              <td>
+                <button class="button danger small" type="button" data-delete-id="${emp.id}" data-delete-name="${emp.fullName}">Hapus</button>
+              </td>
+            </tr>
+          `).join("")
+        : `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--muted)">Belum ada data karyawan.</td></tr>`;
+
+      // Bind delete buttons
+      document.querySelectorAll("[data-delete-id]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const id = Number(btn.dataset.deleteId);
+          const name = btn.dataset.deleteName;
+          showDeleteModal(id, name);
+        });
+      });
+    })
+    .catch(() => {
+      document.getElementById("employeeRows").innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--muted)">Gagal memuat data karyawan.</td></tr>`;
+    });
+}
+
+// ── DELETE MODAL ──────────────────────────────────────────────
+let deleteTargetId = null;
+
+function showDeleteModal(employeeId, employeeName) {
+  deleteTargetId = employeeId;
+  document.getElementById("deleteEmployeeName").textContent = employeeName;
+  document.getElementById("deleteConfirmInput").value = "";
+  document.getElementById("deleteConfirmBtn").disabled = true;
+  document.getElementById("deleteModal").style.display = "flex";
+}
+
+function hideDeleteModal() {
+  document.getElementById("deleteModal").style.display = "none";
+  deleteTargetId = null;
+}
+
+async function confirmDeleteEmployee() {
+  if (deleteTargetId === null) return;
+  const btn = document.getElementById("deleteConfirmBtn");
+  btn.disabled = true;
+  btn.textContent = "Menghapus...";
+  try {
+    const res = await fetch(`/absensi/api/admin/employees/${deleteTargetId}`, {
+      method: "DELETE",
+      headers: adminAuthHeaders()
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(`✅ ${data.message}`);
+      hideDeleteModal();
+      renderEmployees(); // Refresh table
+    } else {
+      alert(`❌ ${data.message || "Gagal menghapus karyawan."}`);
+    }
+  } catch {
+    alert("❌ Gagal terhubung ke server.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Hapus";
+  }
 }
 
 function renderShifts() {

@@ -276,6 +276,23 @@
           </div>
         </section>
 
+        <!-- ══ MODAL HAPUS KARYAWAN ══ -->
+        <div class="modal-overlay" id="deleteModal" style="display:none">
+          <div class="modal-box">
+            <h3>🗑️ Hapus Karyawan</h3>
+            <p id="deleteModalMessage">Yakin ingin menghapus <strong id="deleteEmployeeName"></strong>?</p>
+            <p class="muted" style="font-size:0.85em">Semua data absensi, jadwal, dan izin karyawan ini juga akan dihapus.</p>
+            <div class="form-group" style="margin-top:12px">
+              <label>Ketik <strong>HAPUS</strong> untuk konfirmasi:</label>
+              <input type="text" id="deleteConfirmInput" placeholder="Ketik HAPUS" style="width:100%;padding:8px;margin-top:4px" autocomplete="off">
+            </div>
+            <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+              <button class="button" id="deleteCancelBtn" type="button">Batal</button>
+              <button class="button danger" id="deleteConfirmBtn" type="button" disabled>Hapus</button>
+            </div>
+          </div>
+        </div>
+
         <!-- ══ JADWAL SHIFT ══ -->
         <section class="view" id="shiftsView" aria-labelledby="pageTitle">
           <div class="toolbar">

@@ -250,6 +250,11 @@ async function handleAdmin(req, res, method, path, url, body, segments) {
     return;
   }
 
+  if (method === "DELETE" && segments[2] === "employees" && segments[3] && segments.length === 4) {
+    deleteEmployee(res, context.user, Number(segments[3]));
+    return;
+  }
+
   if (method === "GET" && path === "/api/admin/shifts") {
     sendJson(res, 200, store.shifts);
     return;
@@ -499,51 +504,54 @@ function recomputeDailySummary(employeeId, date) {
 function correctAttendance(res, admin, summaryId, body) {
   const summary = store.dailyAttendanceSummaries.find((item) => item.id === summaryId);
   if (!summary) {
-    sendJson(res, 404, { error: "not_found", message: "Ringkasan absensi tidak ditemukan." });
-    return;
-  }
-
-  const newStatus = body.dailyStatus || body.status;
-  const reason = String(body.reason || body.adminNote || "").trim();
-
-  if (!dailyStatuses.includes(newStatus)) {
-    sendJson(res, 422, { error: "validation_error", message: "dailyStatus tidak valid." });
-    return;
-  }
-
-  if (!reason) {
-    sendJson(res, 422, { error: "validation_error", message: "Alasan koreksi wajib diisi." });
+    sendJson(res, 404, { error: "not_found", message: "Data absensi tidak ditemukan." });
     return;
   }
 
   const oldValue = { ...summary };
-  summary.dailyStatus = newStatus;
-  summary.adminNote = reason;
-  summary.needsReview = Boolean(body.needsReview ?? false);
-  summary.isIncomplete = ["hanya_masuk", "hanya_pulang", "absensi_tidak_lengkap"].includes(newStatus);
-  summary.isLate = newStatus === "telat" || Boolean(body.isLate);
+  if (body.adminNote !== undefined) summary.adminNote = body.adminNote;
+  if (body.dailyStatus !== undefined) summary.dailyStatus = body.dailyStatus;
   summary.updatedAt = nowIso();
-
-  const correction = {
-    id: nextId("attendanceCorrections"),
-    dailyAttendanceSummaryId: summary.id,
-    adminUserId: admin.id,
-    correctionType: "status",
-    oldValue,
-    newValue: { ...summary },
-    reason,
-    createdAt: nowIso()
-  };
-
-  store.attendanceCorrections.push(correction);
-  audit(admin.id, "attendance.correction", "daily_attendance_summaries", summary.id, oldValue, summary, reason);
+  audit(admin.id, "attendance.correction", "daily_attendance_summaries", summary.id, oldValue, summary, body.adminNote || "Koreksi manual oleh admin.");
   saveStore();
+  sendJson(res, 200, enrichSummary(summary));
+}
 
-  sendJson(res, 200, {
-    ok: true,
-    summary: enrichSummary(summary),
-    correction
-  });
+// ── DELETE EMPLOYEE ──────────────────────────────────────────
+function deleteEmployee(res, admin, employeeId) {
+  const employeeIndex = store.employees.findIndex((item) => item.id === employeeId);
+  if (employeeIndex === -1) {
+    sendJson(res, 404, { error: "not_found", message: "Karyawan tidak ditemukan." });
+    return;
+  }
+
+  const employee = store.employees[employeeIndex];
+
+  // Prevent deleting the last admin
+  const user = store.users.find((item) => item.id === employee.userId);
+  if (user && adminEmails.includes(user.email.toLowerCase())) {
+    sendJson(res, 403, { error: "cannot_delete_admin", message: "Tidak bisa menghapus akun admin." });
+    return;
+  }
+
+  // Remove associated user
+  if (user) {
+    store.users = store.users.filter((item) => item.id !== user.id);
+    store.sessions = store.sessions.filter((item) => item.userId !== user.id);
+  }
+
+  // Clean up attendance data
+  store.attendanceRecords = store.attendanceRecords.filter((item) => item.employeeId !== employeeId);
+  store.dailyAttendanceSummaries = store.dailyAttendanceSummaries.filter((item) => item.employeeId !== employeeId);
+  store.employeeSchedules = store.employeeSchedules.filter((item) => item.employeeId !== employeeId);
+  store.deviceResetRequests = (store.deviceResetRequests || []).filter((item) => item.employeeId !== employeeId);
+
+  // Remove employee record
+  store.employees.splice(employeeIndex, 1);
+
+  audit(admin.id, "employee.deleted", "employees", employeeId, employee, null, `Admin menghapus karyawan: ${employee.fullName}`);
+  saveStore();
+  sendJson(res, 200, { ok: true, message: `Karyawan ${employee.fullName} berhasil dihapus.` });
 }
 
 function createEmployee(res, admin, body) {
@@ -649,33 +657,30 @@ function resetDevice(res, admin, employeeId, body) {
   };
 
   store.deviceResetRequests.push(request);
-  audit(admin.id, "employee.device_reset", "employees", employee.id, { registeredDeviceId: oldDeviceId }, { registeredDeviceId: null }, request.requestedReason);
+  audit(admin.id, "employee.device_reset", "employees", employee.id, { oldDeviceId }, { registeredDeviceId: null }, "Admin mereset device ID.");
   saveStore();
-  sendJson(res, 200, { ok: true, employee: enrichEmployee(employee), deviceReset: request });
+  sendJson(res, 200, { ok: true, deviceResetRequest: request, employee: enrichEmployee(employee) });
 }
 
+// ── SHIFT CRUD (minimal) ─────────────────────────────────────
 function createShift(res, admin, body) {
-  const missing = ["name", "startTime", "endTime"].filter((key) => !body[key]);
-  if (missing.length) {
-    sendJson(res, 422, { error: "validation_error", message: `${missing.join(", ")} wajib diisi.` });
+  if (!body.name || !body.start || !body.end) {
+    sendJson(res, 422, { error: "validation_error", message: "Nama, jam masuk, dan jam pulang wajib diisi." });
     return;
   }
-
-  const now = nowIso();
   const shift = {
     id: nextId("shifts"),
     name: String(body.name),
-    startTime: body.startTime,
-    endTime: body.endTime,
-    lateToleranceMinutes: Number(body.lateToleranceMinutes || 15),
-    daysApplicable: body.daysApplicable || ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"],
-    isActive: body.isActive ?? true,
-    createdAt: now,
-    updatedAt: now
+    start: String(body.start),
+    end: String(body.end),
+    tolerance: body.tolerance !== undefined ? Number(body.tolerance) : 15,
+    days: body.days || "Senin-Minggu",
+    active: body.active !== false,
+    createdAt: nowIso(),
+    updatedAt: nowIso()
   };
-
   store.shifts.push(shift);
-  audit(admin.id, "shift.created", "shifts", shift.id, null, shift, "Admin membuat shift.");
+  audit(admin.id, "shift.created", "shifts", shift.id, null, shift, "Admin menambah shift baru.");
   saveStore();
   sendJson(res, 201, shift);
 }
@@ -686,296 +691,531 @@ function updateShift(res, admin, shiftId, body) {
     sendJson(res, 404, { error: "not_found", message: "Shift tidak ditemukan." });
     return;
   }
-
-  const oldValue = { ...shift };
-  ["name", "startTime", "endTime", "lateToleranceMinutes", "daysApplicable", "isActive"].forEach((key) => {
+  const old = { ...shift };
+  ["name", "start", "end", "tolerance", "days", "active"].forEach((key) => {
     if (body[key] !== undefined) shift[key] = body[key];
   });
   shift.updatedAt = nowIso();
-  audit(admin.id, "shift.updated", "shifts", shift.id, oldValue, shift, body.reason || "Admin memperbarui shift.");
+  audit(admin.id, "shift.updated", "shifts", shift.id, old, shift, "Admin memperbarui shift.");
   saveStore();
   sendJson(res, 200, shift);
 }
 
+// ── SUMMARY / DASHBOARD ─────────────────────────────────────
 function dashboardSummary(date) {
-  const rows = dailyAttendance(date);
-  const counts = countStatuses(rows);
+  const dateEmployees = store.employees.filter((item) => item.status === "active");
+  const summaries = store.dailyAttendanceSummaries.filter((item) => item.attendanceDate === date);
+  const counts = { total: dateEmployees.length, hadir_lengkap: 0, belum_absen: 0, hanya_masuk: 0, hanya_pulang: 0, telat: 0, izin: 0, sakit: 0, cuti: 0, absensi_tidak_lengkap: 0, libur_shift: 0 };
+
+  summaries.forEach((s) => {
+    if (counts[s.dailyStatus] !== undefined) counts[s.dailyStatus]++;
+  });
+
+  // Remaining are "belum_absen"
+  const accounted = Object.entries(counts).filter(([k]) => k !== "total" && k !== "belum_absen").reduce((sum, [, v]) => sum + v, 0);
+  counts.belum_absen = Math.max(0, counts.total - accounted);
+
   return {
     date,
-    totalActiveEmployees: store.employees.filter((item) => item.status === "active").length,
-    ...counts,
-    missingCheckIn: rows.filter((item) => item.dailyStatus === "belum_absen"),
-    missingCheckOut: rows.filter((item) => item.dailyStatus === "hanya_masuk"),
-    lateEmployees: rows.filter((item) => item.isLate),
-    homecareAttendances: rows.filter((item) => item.isHomecare),
-    needsReview: rows.filter((item) => item.needsReview)
+    counts,
+    homecare: summaries.filter((item) => item.isHomecare).length,
+    needsReview: summaries.filter((item) => item.needsReview).length,
+    summaries: summaries.map(enrichSummary),
+    employeesWithoutSummary: dateEmployees.filter((emp) => !summaries.some((s) => s.employeeId === emp.id)).map(enrichEmployee)
   };
 }
 
 function dailyAttendance(date) {
   return store.employees
-    .filter((employee) => employee.status === "active")
-    .map((employee) => {
-      const summary = summaryForEmployeeDate(employee.id, date);
-      return enrichSummary(summary);
+    .filter((item) => item.status === "active")
+    .map((emp) => {
+      const summary = store.dailyAttendanceSummaries.find((s) => s.employeeId === emp.id && s.attendanceDate === date);
+      const records = store.attendanceRecords.filter((r) => r.employeeId === emp.id && r.attendanceDate === date);
+      const shift = shiftForEmployee(emp.id, date);
+      const leave = leaveForDate(emp.id, date);
+      const schedule = scheduleForDate(emp.id, date);
+      return {
+        employee: enrichEmployee(emp),
+        summary: summary ? enrichSummary(summary) : null,
+        shift,
+        leave,
+        schedule,
+        records: records.sort((a, b) => a.serverTime.localeCompare(b.serverTime))
+      };
     });
 }
 
 function monthlyAttendance(month, year) {
-  const days = new Date(year, month, 0).getDate();
-  const employees = store.employees.filter((employee) => employee.status === "active");
-  return {
-    month,
-    year,
-    days,
-    employees: employees.map((employee) => {
-      const daily = Array.from({ length: days }, (_, index) => {
-        const date = `${year}-${pad(month)}-${pad(index + 1)}`;
-        return enrichSummary(summaryForEmployeeDate(employee.id, date));
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const dateStr = (day) => `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const employees = store.employees.filter((item) => item.status === "active");
+
+  const rows = employees.map((emp) => {
+    const days = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = dateStr(d);
+      const summary = store.dailyAttendanceSummaries.find((s) => s.employeeId === emp.id && s.attendanceDate === date);
+      const leave = leaveForDate(emp.id, date);
+      const schedule = scheduleForDate(emp.id, date);
+
+      let status = summary?.dailyStatus || (leave ? leave.leaveType : "belum_absen");
+      if (isSunday(date) && status === "belum_absen") {
+        status = "libur_shift";
+      }
+      if (schedule?.scheduleStatus === "libur_shift") {
+        status = "libur_shift";
+      }
+
+      days.push({
+        day: d,
+        date,
+        status,
+        homecare: summary?.isHomecare || false,
+        checkInTime: summary?.checkInTime || null,
+        checkOutTime: summary?.checkOutTime || null,
+        needsReview: summary?.needsReview || false,
+        adminNote: summary?.adminNote || null,
+        isIncomplete: summary?.isIncomplete || false
       });
-      return {
-        employee: enrichEmployee(employee),
-        daily,
-        totals: countStatuses(daily)
-      };
-    })
-  };
-}
-
-function summaryForEmployeeDate(employeeId, date) {
-  const existing = store.dailyAttendanceSummaries.find((item) => item.employeeId === employeeId && item.attendanceDate === date);
-  if (existing) return existing;
-  return virtualSummary(employeeId, date);
-}
-
-function virtualSummary(employeeId, date) {
-  const employee = store.employees.find((item) => item.id === employeeId);
-  const leave = leaveForDate(employeeId, date);
-  const schedule = scheduleForDate(employeeId, date);
-  let status = "belum_absen";
-
-  if (leave) status = leave.leaveType;
-  if (schedule?.scheduleStatus === "libur_shift" || isSunday(date)) status = "libur_shift";
-
-  return {
-    id: `virtual-${employeeId}-${date}`,
-    employeeId,
-    attendanceDate: date,
-    shiftId: schedule?.shiftId || employee?.defaultShiftId || null,
-    checkInId: null,
-    checkOutId: null,
-    checkInTime: null,
-    checkOutTime: null,
-    dailyStatus: status,
-    isLate: false,
-    lateMinutes: 0,
-    isHomecare: false,
-    isIncomplete: false,
-    needsReview: false,
-    adminNote: null,
-    createdAt: null,
-    updatedAt: null
-  };
-}
-
-function countStatuses(rows) {
-  return rows.reduce(
-    (acc, row) => {
-      acc.hadirLengkap += row.dailyStatus === "hadir_lengkap" ? 1 : 0;
-      acc.belumAbsen += row.dailyStatus === "belum_absen" ? 1 : 0;
-      acc.telat += row.dailyStatus === "telat" || row.isLate ? 1 : 0;
-      acc.hanyaMasuk += row.dailyStatus === "hanya_masuk" ? 1 : 0;
-      acc.hanyaPulang += row.dailyStatus === "hanya_pulang" ? 1 : 0;
-      acc.izin += row.dailyStatus === "izin" ? 1 : 0;
-      acc.sakit += row.dailyStatus === "sakit" ? 1 : 0;
-      acc.cuti += row.dailyStatus === "cuti" ? 1 : 0;
-      acc.absensiTidakLengkap += row.dailyStatus === "absensi_tidak_lengkap" || row.isIncomplete ? 1 : 0;
-      acc.liburShift += row.dailyStatus === "libur_shift" ? 1 : 0;
-      acc.homecare += row.isHomecare ? 1 : 0;
-      acc.perluReview += row.needsReview ? 1 : 0;
-      return acc;
-    },
-    {
-      hadirLengkap: 0,
-      belumAbsen: 0,
-      telat: 0,
-      hanyaMasuk: 0,
-      hanyaPulang: 0,
-      izin: 0,
-      sakit: 0,
-      cuti: 0,
-      absensiTidakLengkap: 0,
-      liburShift: 0,
-      homecare: 0,
-      perluReview: 0
     }
-  );
+    return { employee: enrichEmployee(emp), days };
+  });
+
+  return { month, year, daysInMonth, rows };
 }
 
 function exportReport(res, url) {
   const type = url.searchParams.get("type") || "daily";
-  if (type === "monthly") {
-    const month = Number(url.searchParams.get("month") || new Date().getMonth() + 1);
-    const year = Number(url.searchParams.get("year") || new Date().getFullYear());
-    const data = monthlyAttendance(month, year);
-    const header = ["Nama", ...Array.from({ length: data.days }, (_, index) => String(index + 1)), "Hadir", "Telat", "Tidak Lengkap", "Belum Absen", "Izin", "Sakit", "Cuti", "Homecare", "Review"];
-    const rows = data.employees.map((item) => [
-      item.employee.fullName,
-      ...item.daily.map((day) => day.dailyStatus),
-      item.totals.hadirLengkap,
-      item.totals.telat,
-      item.totals.absensiTidakLengkap,
-      item.totals.belumAbsen,
-      item.totals.izin,
-      item.totals.sakit,
-      item.totals.cuti,
-      item.totals.homecare,
-      item.totals.perluReview
-    ]);
-    sendText(res, 200, toCsv([header, ...rows]), "text/csv; charset=utf-8", `lelap-bulanan-${year}-${pad(month)}.csv`);
-    return;
-  }
-
   const date = url.searchParams.get("date") || todayIsoDate();
-  const rows = dailyAttendance(date).map((item) => [
-    item.attendanceDate,
-    item.employee.fullName,
-    item.shift?.name || "",
-    item.checkInTime || "",
-    item.checkOutTime || "",
-    item.dailyStatus,
-    item.isLate ? "Ya" : "Tidak",
-    item.isHomecare ? "Homecare" : "Kantor",
-    item.adminNote || ""
-  ]);
-  sendText(res, 200, toCsv([["Tanggal", "Nama", "Shift", "Jam Masuk", "Jam Pulang", "Status", "Telat", "Lokasi", "Catatan"], ...rows]), "text/csv; charset=utf-8", `lelap-harian-${date}.csv`);
-}
+  const month = Number(url.searchParams.get("month") || new Date().getMonth() + 1);
+  const year = Number(url.searchParams.get("year") || new Date().getFullYear());
 
-function exportTextReport(res, url) {
-  const type = url.searchParams.get("type") || "monthly";
-  const lines = [];
-
+  let rows = [];
   if (type === "daily") {
-    const date = url.searchParams.get("date") || todayIsoDate();
-    const summary = dashboardSummary(date);
-    lines.push("Laporan Harian Lelap Absensi", `Tanggal: ${date}`, "");
-    lines.push(`Hadir lengkap: ${summary.hadirLengkap}`);
-    lines.push(`Telat: ${summary.telat}`);
-    lines.push(`Belum absen: ${summary.belumAbsen}`);
-    lines.push(`Tidak lengkap: ${summary.absensiTidakLengkap}`);
-  } else {
-    const month = Number(url.searchParams.get("month") || new Date().getMonth() + 1);
-    const year = Number(url.searchParams.get("year") || new Date().getFullYear());
+    const data = dailyAttendance(date);
+    rows = data.map((item) => ({
+      Nama: item.employee.fullName,
+      Jabatan: item.employee.position,
+      Shift: item.shift?.name || "-",
+      "Jam Masuk": item.summary?.checkInTime || "-",
+      "Jam Pulang": item.summary?.checkOutTime || "-",
+      Status: item.summary?.dailyStatus || "belum_absen",
+      Homecare: item.summary?.isHomecare ? "Ya" : "Tidak",
+      "Perlu Review": item.summary?.needsReview ? "Ya" : "Tidak",
+    }));
+  } else if (type === "monthly") {
     const data = monthlyAttendance(month, year);
-    lines.push("Laporan Bulanan Lelap Absensi", `Periode: ${pad(month)}-${year}`, "");
-    data.employees.forEach((item) => {
-      lines.push(`${item.employee.fullName}: hadir ${item.totals.hadirLengkap}, telat ${item.totals.telat}, tidak lengkap ${item.totals.absensiTidakLengkap}, belum absen ${item.totals.belumAbsen}`);
+    rows = data.rows.map((item) => {
+      const hadir = item.days.filter((d) => d.status === "hadir_lengkap").length;
+      const telat = item.days.filter((d) => d.status === "telat").length;
+      const alpha = item.days.filter((d) => d.status === "belum_absen").length;
+      const izin = item.days.filter((d) => d.status === "izin").length;
+      const sakit = item.days.filter((d) => d.status === "sakit").length;
+      return {
+        Nama: item.employee.fullName,
+        Jabatan: item.employee.position,
+        Hadir: hadir,
+        Telat: telat,
+        Alpha: alpha,
+        Izin: izin,
+        Sakit: sakit,
+        TotalHari: item.days.length
+      };
     });
   }
 
-  sendText(res, 200, lines.join("\n"), "text/plain; charset=utf-8", `lelap-report-${type}.txt`);
+  sendJson(res, 200, { type, date: type === "daily" ? date : null, month: type === "monthly" ? month : null, year: type === "monthly" ? year : null, rows });
 }
 
-function enrichSummary(summary) {
-  const checkIn = store.attendanceRecords.find((item) => item.id === summary.checkInId) || null;
-  const checkOut = store.attendanceRecords.find((item) => item.id === summary.checkOutId) || null;
-  return {
-    ...summary,
-    employee: enrichEmployee(store.employees.find((item) => item.id === summary.employeeId)),
-    shift: store.shifts.find((item) => item.id === summary.shiftId) || null,
-    checkIn,
-    checkOut
-  };
+function exportTextReport(res, url) {
+  const type = url.searchParams.get("type") || "daily";
+  const date = url.searchParams.get("date") || todayIsoDate();
+  const month = Number(url.searchParams.get("month") || new Date().getMonth() + 1);
+  const year = Number(url.searchParams.get("year") || new Date().getFullYear());
+  let text = `LAPORAN ABSENSI ${type === "daily" ? `HARIAN - ${date}` : `BULANAN - ${month}/${year}`}\n${"=".repeat(50)}\n\n`;
+
+  if (type === "daily") {
+    const data = dailyAttendance(date);
+    data.forEach((item) => {
+      text += `${item.employee.fullName} (${item.employee.position})\n`;
+      text += `  Shift: ${item.shift?.name || "-"} | Masuk: ${item.summary?.checkInTime || "-"} | Pulang: ${item.summary?.checkOutTime || "-"}\n`;
+      text += `  Status: ${item.summary?.dailyStatus || "belum_absen"}${item.summary?.isHomecare ? " [Homecare]" : ""}\n\n`;
+    });
+  } else if (type === "monthly") {
+    const data = monthlyAttendance(month, year);
+    data.rows.forEach((item) => {
+      const hadir = item.days.filter((d) => d.status === "hadir_lengkap").length;
+      const telat = item.days.filter((d) => d.status === "telat").length;
+      const alpha = item.days.filter((d) => d.status === "belum_absen").length;
+      text += `${item.employee.fullName} - Hadir: ${hadir}, Telat: ${telat}, Alpha: ${alpha}\n`;
+    });
+  }
+
+  res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+  res.end(text);
 }
 
-function enrichEmployee(employee) {
-  if (!employee) return null;
-  const user = store.users.find((item) => item.id === employee.userId);
-  return {
-    ...employee,
-    email: user?.email || null,
-    userIsActive: user?.isActive ?? false,
-    defaultShift: store.shifts.find((item) => item.id === employee.defaultShiftId) || null
-  };
+// ── HELPERS ──────────────────────────────────────────────────
+function nowIso() { return new Date().toISOString(); }
+function todayIsoDate() { return nowIso().slice(0, 10); }
+function timePart(iso) { return iso ? iso.slice(11, 19) : null; }
+function dayName(dateStr) {
+  const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+  return days[new Date(dateStr + "T00:00:00").getDay()] || "";
+}
+function isSunday(dateStr) { return new Date(dateStr + "T00:00:00").getDay() === 0; }
+
+function nextId(collectionName) {
+  const seq = store.sequences || {};
+  seq[collectionName] = (seq[collectionName] || 0) + 1;
+  store.sequences = seq;
+  return seq[collectionName];
 }
 
-function publicUser(user) {
-  return {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    phone: user.phone,
-    isActive: user.isActive,
-    lastLoginAt: user.lastLoginAt
+function round(value, decimals) { return Number(Math.round(Number(value + "e" + decimals)) + "e-" + decimals); }
+
+function distanceMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function hashPassword(password) {
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(password, salt, 64).toString("hex");
+  return `scrypt$${salt}$${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  // Support both scrypt$salt$hash (legacy) and salt:hash formats
+  let salt, hash;
+  if (stored.startsWith("scrypt$")) {
+    const parts = stored.split("$");
+    salt = parts[1];
+    hash = parts[2];
+  } else {
+    [salt, hash] = stored.split(":");
+  }
+  const derived = scryptSync(password, salt, 64).toString("hex");
+  return timingSafeEqual(Buffer.from(hash), Buffer.from(derived));
+}
+
+function parseCookies(cookieHeader) {
+  return String(cookieHeader)
+    .split(";")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .reduce((acc, item) => {
+      const index = item.indexOf("=");
+      if (index === -1) return acc;
+      const key = decodeURIComponent(item.slice(0, index));
+      const value = decodeURIComponent(item.slice(index + 1));
+      acc[key] = value;
+      return acc;
+    }, {});
+}
+
+function authCookie(token) {
+  const secure = secureCookie ? "; Secure" : "";
+  return `${authCookieName}=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${sessionMaxAgeSeconds}${secure}`;
+}
+
+function expiredAuthCookie() {
+  const secure = secureCookie ? "; Secure" : "";
+  return `${authCookieName}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secure}`;
+}
+
+function setCorsHeaders(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, Cookie");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+}
+
+function sendJson(res, status, data) {
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(data, null, 2));
+}
+
+function sendFile(res, filePath) {
+  const mimeMap = {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".webp": "image/webp",
+    ".ico": "image/x-icon",
+    ".woff2": "font/woff2",
+    ".woff": "font/woff",
+    ".pdf": "application/pdf"
   };
+  const ext = extname(filePath).toLowerCase();
+  const contentType = mimeMap[ext] || "application/octet-stream";
+  const content = readFileSync(filePath);
+  res.writeHead(200, { "Content-Type": contentType, "Cache-Control": "no-cache, no-store, must-revalidate" });
+  res.end(content);
+}
+
+function redirect(res, location) {
+  res.writeHead(302, { Location: location });
+  res.end();
+}
+
+function safeJoin(base, target) {
+  const fullPath = normalize(join(base, target));
+  if (!fullPath.startsWith(normalize(base))) return null;
+  return fullPath;
+}
+
+function requireAuth(req, res) {
+  const header = req.headers.authorization || "";
+  const bearerToken = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const cookies = parseCookies(req.headers.cookie || "");
+  const token = bearerToken || cookies[authCookieName] || "";
+  const session = store.sessions.find((item) => item.token === token);
+
+  if (!session || new Date(session.expiresAt).getTime() < Date.now()) {
+    sendJson(res, 401, { error: "unauthorized", message: "Sesi tidak valid atau sudah habis." });
+    return null;
+  }
+
+  const user = store.users.find((item) => item.id === session.userId);
+  if (!user || !user.isActive) {
+    sendJson(res, 401, { error: "unauthorized", message: "Akun tidak aktif." });
+    return null;
+  }
+
+  return { token, session, user };
 }
 
 function requireRole(req, res, roles) {
   const context = requireAuth(req, res);
   if (!context) return null;
   if (!roles.includes(context.user.role)) {
-    sendJson(res, 403, { error: "forbidden", message: "Role tidak memiliki akses ke endpoint ini." });
+    sendJson(res, 403, { error: "forbidden", message: `Akses khusus: ${roles.join(" / ")}.` });
     return null;
   }
   return context;
 }
 
-function requireAuth(req, res) {
-  const context = contextFromRequest(req);
+function contextFromRequest(req) {
+  const header = req.headers.authorization || "";
+  const bearerToken = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const cookies = parseCookies(req.headers.cookie || "");
+  const token = bearerToken || cookies[authCookieName] || "";
+  const session = store.sessions.find((item) => item.token === token);
 
-  if (!context) {
-    sendJson(res, 401, { error: "unauthorized", message: "Token tidak valid atau sudah kadaluarsa." });
+  if (!session || new Date(session.expiresAt).getTime() < Date.now()) {
     return null;
   }
 
-  return context;
+  const user = store.users.find((item) => item.id === session.userId);
+  if (!user || !user.isActive) {
+    return null;
+  }
+
+  return { token, session, user };
+}
+
+function isAdminRequest(req) {
+  const context = contextFromRequest(req);
+  return Boolean(context && context.user.role === "admin");
+}
+
+function publicUser(user) {
+  if (!user) return null;
+  return { id: user.id, name: user.name, email: user.email, role: user.role, phone: user.phone };
 }
 
 function employeeForUser(userId) {
   return store.employees.find((item) => item.userId === userId) || null;
 }
 
-function activeOffice() {
-  return store.officeLocations.find((item) => item.isActive) || store.officeLocations[0];
-}
-
 function shiftForEmployee(employeeId, date) {
-  const schedule = scheduleForDate(employeeId, date);
   const employee = store.employees.find((item) => item.id === employeeId);
-  return store.shifts.find((item) => item.id === (schedule?.shiftId || employee?.defaultShiftId)) || store.shifts[0] || null;
-}
-
-function scheduleForDate(employeeId, date) {
-  return store.employeeSchedules.find((item) => item.employeeId === employeeId && item.workDate === date) || null;
+  if (!employee) return null;
+  const shiftId = employee.defaultShiftId;
+  if (!shiftId) return null;
+  return store.shifts.find((item) => item.id === shiftId) || null;
 }
 
 function leaveForDate(employeeId, date) {
-  return store.leaveRequests.find((item) => item.employeeId === employeeId && item.approvalStatus === "approved" && item.startDate <= date && item.endDate >= date) || null;
+  return store.employeeLeaves?.find((item) => item.employeeId === employeeId && date >= item.startDate && date <= item.endDate && item.status === "approved") || null;
 }
 
-function lateInfo(serverTime, shift) {
-  if (!shift) return { isLate: false, minutes: 0 };
-  const date = serverTime.slice(0, 10);
-  const actual = new Date(serverTime).getTime();
-  const threshold = new Date(`${date}T${shift.startTime}`).getTime() + Number(shift.lateToleranceMinutes || 0) * 60_000;
-  const minutes = Math.max(0, Math.ceil((actual - threshold) / 60_000));
-  return { isLate: minutes > 0, minutes };
+function scheduleForDate(employeeId, date) {
+  return store.employeeSchedules?.find((item) => item.employeeId === employeeId && item.workDate === date) || null;
 }
 
-function persistPhoto(base64, employeeId, date, type, kind, fallbackPath) {
-  if (base64) {
-    const clean = String(base64).replace(/^data:image\/\w+;base64,/, "");
-    const filename = `${employeeId}-${date}-${type}-${kind}-${Date.now()}.jpg`;
-    const filePath = join(uploadDir, filename);
-    writeFileSync(filePath, Buffer.from(clean, "base64"));
-    return `/uploads/${filename}`;
+function summaryForEmployeeDate(employeeId, date) {
+  const summary = store.dailyAttendanceSummaries.find((item) => item.employeeId === employeeId && item.attendanceDate === date);
+  return summary ? enrichSummary(summary) : null;
+}
+
+function lateInfo(serverTimeIso, shift) {
+  if (!shift || !serverTimeIso) return { isLate: false, minutes: 0 };
+  const time = timePart(serverTimeIso);
+  if (!time || !shift.start) return { isLate: false, minutes: 0 };
+  const [h, m] = time.split(":").map(Number);
+  const [sh, sm] = shift.start.split(":").map(Number);
+  const threshold = sh * 60 + sm + (shift.tolerance || 15);
+  const actual = h * 60 + m;
+  if (actual <= threshold) return { isLate: false, minutes: 0 };
+  return { isLate: true, minutes: actual - threshold };
+}
+
+function enrichEmployee(employee) {
+  if (!employee) return null;
+  const user = store.users.find((item) => item.id === employee.userId);
+  const shift = store.shifts.find((item) => item.id === employee.defaultShiftId);
+  return {
+    ...employee,
+    email: user?.email || null,
+    isActive: user?.isActive ?? true,
+    shiftName: shift?.name || "-",
+    role: user?.role || null
+  };
+}
+
+function enrichSummary(summary) {
+  if (!summary) return null;
+  const employee = store.employees.find((item) => item.id === summary.employeeId);
+  return {
+    ...summary,
+    employeeName: employee?.fullName || "—",
+    employeePosition: employee?.position || "—"
+  };
+}
+
+const statusLabels = {
+  hadir_lengkap: "Hadir Lengkap",
+  belum_absen: "Belum Absen",
+  hanya_masuk: "Hanya Masuk",
+  hanya_pulang: "Hanya Pulang",
+  telat: "Telat",
+  izin: "Izin",
+  sakit: "Sakit",
+  cuti: "Cuti",
+  absensi_tidak_lengkap: "Absensi Tidak Lengkap",
+  libur_shift: "Libur Shift"
+};
+
+function activeOffice() {
+  return store.office || { name: "Kantor Pusat", address: "Alamat kantor", latitude: "-7.330000", longitude: "110.500000", radiusMeter: 20 };
+}
+
+function persistPhoto(base64, employeeId, date, type, label, existingPath) {
+  if (existingPath && existsSync(existingPath)) return existingPath;
+  if (!base64) return null;
+
+  try {
+    ensureDirectories();
+    const folder = join(uploadDir, String(employeeId), date);
+    mkdirSync(folder, { recursive: true });
+    const filename = `${type}_${label}_${Date.now()}.jpg`;
+    const filePath = join(folder, filename);
+    const buffer = Buffer.from(base64, "base64");
+    writeFileSync(filePath, buffer);
+    return filePath;
+  } catch {
+    return null;
   }
-
-  if (fallbackPath) return String(fallbackPath);
-  return `/uploads/placeholder-${employeeId}-${date}-${type}-${kind}.jpg`;
 }
 
+function ensureDirectories() {
+  [dataDir, uploadDir].forEach((dir) => {
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  });
+}
+
+function loadStore() {
+  if (!existsSync(storePath)) return defaultStore();
+  try {
+    return JSON.parse(readFileSync(storePath, "utf-8"));
+  } catch {
+    return defaultStore();
+  }
+}
+
+function saveStore() {
+  try {
+    ensureDirectories();
+    writeFileSync(storePath, JSON.stringify(store, null, 2), "utf-8");
+  } catch (err) {
+    console.error("Failed to save store:", err.message);
+  }
+}
+
+function defaultStore() {
+  return {
+    sequences: { users: 0, employees: 0, shifts: 0, attendanceRecords: 0, dailyAttendanceSummaries: 0, sessions: 0, deviceResetRequests: 0, employeeLeaves: 0, employeeSchedules: 0, auditLogs: 0 },
+    users: [
+      { id: 1, name: "Puguh Legowo", email: "puguh.legowo.k@gmail.com", passwordHash: hashPassword("Admin123!"), role: "admin", phone: null, isActive: true, lastLoginAt: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 2, name: "Finna Refina", email: "refinna.sari.86@gmail.com", passwordHash: hashPassword("Admin123!"), role: "admin", phone: null, isActive: true, lastLoginAt: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 3, name: "Sari Wulandari", email: "sari@lelap.web.id", passwordHash: hashPassword("Karyawan123!"), role: "employee", phone: "0812-1100-2233", isActive: true, lastLoginAt: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 4, name: "Dinda Permata", email: "dinda@lelap.web.id", passwordHash: hashPassword("Karyawan123!"), role: "employee", phone: "0813-2200-3344", isActive: true, lastLoginAt: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 5, name: "Maya Lestari", email: "maya@lelap.web.id", passwordHash: hashPassword("Karyawan123!"), role: "employee", phone: "0821-3300-4455", isActive: true, lastLoginAt: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }
+    ],
+    employees: [
+      { id: 1, userId: 3, employeeCode: "EMP-0001", fullName: "Sari Wulandari", position: "Terapis Baby Care", phone: "0812-1100-2233", profilePhoto: null, defaultShiftId: 1, registeredDeviceId: null, joinedDate: "2025-09-12", status: "active", notes: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 2, userId: 4, employeeCode: "EMP-0002", fullName: "Dinda Permata", position: "Terapis Mom Care", phone: "0813-2200-3344", profilePhoto: null, defaultShiftId: 2, registeredDeviceId: null, joinedDate: "2025-11-04", status: "active", notes: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 3, userId: 5, employeeCode: "EMP-0003", fullName: "Maya Lestari", position: "Admin Front Office", phone: "0821-3300-4455", profilePhoto: null, defaultShiftId: 1, registeredDeviceId: null, joinedDate: "2024-06-18", status: "active", notes: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }
+    ],
+    shifts: [
+      { id: 1, name: "Shift Reguler", start: "08:00", end: "16:00", tolerance: 15, days: "Senin-Sabtu", active: true, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 2, name: "Shift Pagi Khusus", start: "07:00", end: "15:00", tolerance: 10, days: "Senin-Jumat", active: true, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 3, name: "Shift Siang", start: "10:00", end: "18:00", tolerance: 15, days: "Senin-Sabtu", active: true, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 4, name: "Shift Homecare", start: "08:30", end: "17:00", tolerance: 20, days: "Sesuai jadwal", active: true, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }
+    ],
+    office: { name: "Lelap Mom Baby Care Salatiga", address: "Jl. Taman Pahlawan 81, Salatiga", latitude: "-7.330000", longitude: "110.500000", radiusMeter: 20 },
+    attendanceRecords: [],
+    dailyAttendanceSummaries: [],
+    employeeLeaves: [],
+    employeeSchedules: [],
+    deviceResetRequests: [],
+    auditLogs: [],
+    sessions: []
+  };
+}
+
+function audit(userId, action, entityType, entityId, oldValue, newValue, description) {
+  store.auditLogs.push({
+    id: nextId("auditLogs"),
+    userId,
+    action,
+    entityType,
+    entityId,
+    oldValue,
+    newValue,
+    description,
+    ipAddress: null,
+    createdAt: nowIso()
+  });
+}
+
+async function readJsonBody(req) {
+  return new Promise((resolve) => {
+    let data = "";
+    req.on("data", (chunk) => (data += chunk));
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(data));
+      } catch {
+        resolve({});
+      }
+    });
+  });
+}
+
+// ── STATIC FILE SERVING ──────────────────────────────────────
 async function serveStatic(req, res, url) {
   const originalPathname = decodeURIComponent(url.pathname);
 
@@ -1023,360 +1263,4 @@ async function serveStatic(req, res, url) {
   }
 
   sendFile(res, filePath);
-}
-
-function contextFromRequest(req) {
-  const header = req.headers.authorization || "";
-  const bearerToken = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const cookies = parseCookies(req.headers.cookie || "");
-  const token = bearerToken || cookies[authCookieName] || "";
-  const session = store.sessions.find((item) => item.token === token);
-
-  if (!session || new Date(session.expiresAt).getTime() < Date.now()) {
-    return null;
-  }
-
-  const user = store.users.find((item) => item.id === session.userId);
-  if (!user || !user.isActive) {
-    return null;
-  }
-
-  return { token, session, user };
-}
-
-function isAdminRequest(req) {
-  const context = contextFromRequest(req);
-  return Boolean(context && context.user.role === "admin");
-}
-
-function parseCookies(cookieHeader) {
-  return String(cookieHeader)
-    .split(";")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .reduce((acc, item) => {
-      const index = item.indexOf("=");
-      if (index === -1) return acc;
-      const key = decodeURIComponent(item.slice(0, index));
-      const value = decodeURIComponent(item.slice(index + 1));
-      acc[key] = value;
-      return acc;
-    }, {});
-}
-
-function authCookie(token) {
-  const secure = secureCookie ? "; Secure" : "";
-  return `${authCookieName}=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${sessionMaxAgeSeconds}${secure}`;
-}
-
-function expiredAuthCookie() {
-  const secure = secureCookie ? "; Secure" : "";
-  return `${authCookieName}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secure}`;
-}
-
-function redirect(res, location) {
-  res.writeHead(302, { Location: location });
-  res.end();
-}
-
-function sendFile(res, filePath) {
-  const contentType = {
-    ".html": "text/html; charset=utf-8",
-    ".css": "text/css; charset=utf-8",
-    ".js": "text/javascript; charset=utf-8",
-    ".json": "application/json; charset=utf-8",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".svg": "image/svg+xml"
-  }[extname(filePath).toLowerCase()] || "application/octet-stream";
-  res.writeHead(200, { "Content-Type": contentType });
-  res.end(readFileSync(filePath));
-}
-
-function safeJoin(base, pathname) {
-  const target = normalize(join(base, pathname));
-  return target.startsWith(normalize(base)) ? target : null;
-}
-
-function readJsonBody(req) {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (chunk) => {
-      data += chunk;
-      if (data.length > 20_000_000) {
-        reject(new Error("Request body terlalu besar."));
-      }
-    });
-    req.on("end", () => {
-      if (!data) {
-        resolve({});
-        return;
-      }
-      try {
-        resolve(JSON.parse(data));
-      } catch {
-        reject(new Error("Body harus JSON valid."));
-      }
-    });
-    req.on("error", reject);
-  });
-}
-
-function sendJson(res, status, payload) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
-  res.end(JSON.stringify(payload, null, 2));
-}
-
-function sendText(res, status, payload, contentType, filename) {
-  const headers = { "Content-Type": contentType };
-  if (filename) headers["Content-Disposition"] = `attachment; filename="${filename}"`;
-  res.writeHead(status, headers);
-  res.end(payload);
-}
-
-function setCorsHeaders(res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
-}
-
-function ensureDirectories() {
-  mkdirSync(dataDir, { recursive: true });
-  mkdirSync(uploadDir, { recursive: true });
-}
-
-function loadStore() {
-  if (!existsSync(storePath)) {
-    const seed = buildSeedStore();
-    writeFileSync(storePath, JSON.stringify(seed, null, 2));
-    return seed;
-  }
-  return JSON.parse(readFileSync(storePath, "utf8"));
-}
-
-function saveStore() {
-  writeFileSync(storePath, JSON.stringify(store, null, 2));
-}
-
-function buildSeedStore() {
-  const now = nowIso();
-  const users = [
-    ...adminEmails.map((email, index) => ({
-      id: index + 1,
-      name: index === 0 ? "Puguh Legowo" : `Admin ${index + 1}`,
-      email,
-      passwordHash: hashPassword("Admin123!"),
-      role: "admin",
-      phone: null,
-      isActive: true,
-      lastLoginAt: null,
-      createdAt: now,
-      updatedAt: now
-    })),
-    ...["Sari Wulandari", "Dinda Permata", "Maya Lestari", "Rina Aprilia"].map((name, index) => ({
-      id: adminEmails.length + index + 1,
-      name,
-      email: `${name.split(" ")[0].toLowerCase()}@lelap.web.id`,
-      passwordHash: hashPassword("Karyawan123!"),
-      role: "employee",
-      phone: `08${12 + index}-0000-00${index + 11}`,
-      isActive: true,
-      lastLoginAt: null,
-      createdAt: now,
-      updatedAt: now
-    }))
-  ];
-
-  const shifts = [
-    {
-      id: 1,
-      name: "Shift Reguler",
-      startTime: "08:00:00",
-      endTime: "16:00:00",
-      lateToleranceMinutes: 15,
-      daysApplicable: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"],
-      isActive: true,
-      createdAt: now,
-      updatedAt: now
-    },
-    {
-      id: 2,
-      name: "Shift Pagi Khusus",
-      startTime: "07:00:00",
-      endTime: "15:00:00",
-      lateToleranceMinutes: 10,
-      daysApplicable: ["monday", "tuesday", "wednesday", "thursday", "friday"],
-      isActive: true,
-      createdAt: now,
-      updatedAt: now
-    },
-    {
-      id: 3,
-      name: "Shift Homecare",
-      startTime: "08:30:00",
-      endTime: "17:00:00",
-      lateToleranceMinutes: 20,
-      daysApplicable: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"],
-      isActive: true,
-      createdAt: now,
-      updatedAt: now
-    }
-  ];
-
-  const employees = users
-    .filter((user) => user.role === "employee")
-    .map((user, index) => ({
-      id: index + 1,
-      userId: user.id,
-      employeeCode: `EMP-${String(index + 1).padStart(4, "0")}`,
-      fullName: user.name,
-      position: ["Terapis Baby Care", "Terapis Mom Care", "Admin Front Office", "Terapis Homecare"][index],
-      phone: user.phone,
-      profilePhoto: null,
-      defaultShiftId: index === 1 ? 2 : index === 3 ? 3 : 1,
-      registeredDeviceId: index === 0 ? "LA-ANDROID-001" : null,
-      joinedDate: `2026-0${Math.min(index + 1, 6)}-10`,
-      status: "active",
-      notes: null,
-      createdAt: now,
-      updatedAt: now
-    }));
-
-  return {
-    meta: {
-      schemaVersion: 1,
-      createdAt: now
-    },
-    users,
-    employees,
-    shifts,
-    employeeSchedules: [],
-    attendanceRecords: [],
-    dailyAttendanceSummaries: [],
-    leaveRequests: [
-      {
-        id: 1,
-        employeeId: 2,
-        leaveType: "izin",
-        startDate: "2026-06-27",
-        endDate: "2026-06-27",
-        reason: "Keperluan keluarga.",
-        attachmentPath: null,
-        approvalStatus: "approved",
-        approvedBy: 1,
-        approvedAt: now,
-        adminNote: "Disetujui owner.",
-        createdAt: now,
-        updatedAt: now
-      }
-    ],
-    officeLocations: [
-      {
-        id: 1,
-        name: "Lelap Mom Baby Care Salatiga",
-        address: "Alamat kantor diinput saat setup awal",
-        latitude: -7.33,
-        longitude: 110.5,
-        radiusMeter: 20,
-        isActive: true,
-        createdAt: now,
-        updatedAt: now
-      }
-    ],
-    attendanceCorrections: [],
-    auditLogs: [],
-    deviceResetRequests: [],
-    sessions: []
-  };
-}
-
-function nextId(collectionName) {
-  const items = store[collectionName] || [];
-  const numericIds = items.map((item) => Number(item.id)).filter(Number.isFinite);
-  return numericIds.length ? Math.max(...numericIds) + 1 : 1;
-}
-
-function audit(adminUserId, action, entityType, entityId, oldValue, newValue, reason) {
-  store.auditLogs.push({
-    id: nextId("auditLogs"),
-    adminUserId,
-    action,
-    entityType,
-    entityId,
-    oldValue,
-    newValue,
-    reason,
-    ipAddress: null,
-    userAgent: null,
-    createdAt: nowIso()
-  });
-}
-
-function hashPassword(password) {
-  const salt = randomBytes(16).toString("hex");
-  const hash = scryptSync(password, salt, 64).toString("hex");
-  return `scrypt$${salt}$${hash}`;
-}
-
-function verifyPassword(password, encoded) {
-  const [method, salt, hash] = String(encoded).split("$");
-  if (method !== "scrypt" || !salt || !hash) return false;
-  const actual = Buffer.from(scryptSync(password, salt, 64).toString("hex"), "hex");
-  const expected = Buffer.from(hash, "hex");
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
-
-function distanceMeters(lat1, lon1, lat2, lon2) {
-  const radius = 6_371_000;
-  const dLat = toRadians(lat2 - lat1);
-  const dLon = toRadians(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLon / 2) ** 2;
-  return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function toRadians(value) {
-  return (value * Math.PI) / 180;
-}
-
-function round(value, decimals) {
-  const factor = 10 ** decimals;
-  return Math.round(value * factor) / factor;
-}
-
-function todayIsoDate() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-function timePart(isoDate) {
-  return new Date(isoDate).toTimeString().slice(0, 8);
-}
-
-function dayName(date) {
-  return ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"][new Date(`${date}T12:00:00`).getDay()];
-}
-
-function isSunday(date) {
-  return new Date(`${date}T12:00:00`).getDay() === 0;
-}
-
-function pad(value) {
-  return String(value).padStart(2, "0");
-}
-
-function toCsv(rows) {
-  return rows
-    .map((row) =>
-      row
-        .map((cell) => {
-          const value = String(cell ?? "");
-          return `"${value.replaceAll('"', '""')}"`;
-        })
-        .join(",")
-    )
-    .join("\n");
 }
