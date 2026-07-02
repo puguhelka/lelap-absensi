@@ -236,9 +236,10 @@ function bindEvents() {
     updateBulkDeleteButton();
   });
   document.getElementById("bulkDeleteEmployee").addEventListener("click", showBulkDeleteModal);
-  document.getElementById("addShift").addEventListener("click", () => {
-    alert("Tambah shift akan terhubung ke POST /api/admin/shifts.");
-  });
+  document.getElementById("addShift").addEventListener("click", showShiftModal);
+  document.getElementById("closeShiftModal").addEventListener("click", hideShiftModal);
+  document.getElementById("cancelShiftBtn").addEventListener("click", hideShiftModal);
+  document.getElementById("shiftForm").addEventListener("submit", saveShift);
   document.getElementById("copySchedule").addEventListener("click", () => {
     alert("Copy jadwal akan dibuat setelah modul kalender shift aktif.");
   });
@@ -466,11 +467,74 @@ function renderEmployees() {
 }
 
 // ── SHIFTS ──
-function renderShifts() {
+async function renderShifts() {
+  try {
+    const res = await authFetch("/absensi/api/admin/shifts");
+    if (res && res.ok) _shifts = await res.json();
+  } catch {}
   document.getElementById("shiftRows").innerHTML = _shifts.map(s => {
     const assigned = _employees.filter(e => e.defaultShiftId === s.id);
-    return `<tr><td><strong>${s.name}</strong></td><td>${s.start}</td><td>${s.end}</td><td>${s.tolerance} menit</td><td>${s.days}</td><td>${assigned.map(e => e.fullName).join(", ") || "-"}</td><td><span class="badge ${s.active ? "complete" : "missing"}">${s.active ? "Aktif" : "Nonaktif"}</span></td></tr>`;
+    return `<tr><td><strong>${s.name}</strong></td><td>${s.start}</td><td>${s.end}</td><td>${s.tolerance} menit</td><td>${s.days}</td><td>${assigned.map(e => e.fullName).join(", ") || "-"}</td><td><span class="badge ${s.active ? "complete" : "missing"}">${s.active ? "Aktif" : "Nonaktif"}</span></td><td>
+      <button class="button small" type="button" data-edit-shift="${s.id}" style="margin-right:4px">✏️</button>
+      <button class="button danger small" type="button" data-delete-shift="${s.id}">🗑️</button>
+    </td></tr>`;
   }).join("");
+  document.querySelectorAll("[data-edit-shift]").forEach(btn => btn.addEventListener("click", () => editShift(Number(btn.dataset.editShift))));
+  document.querySelectorAll("[data-delete-shift]").forEach(btn => btn.addEventListener("click", async () => {
+    if (!confirm("Hapus shift ini?")) return;
+    const r = await authFetch(`/absensi/api/admin/shifts/${btn.dataset.deleteShift}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active: false }) });
+    if (r && r.ok) { renderShifts(); if (state.view === "dashboard") renderDashboard(); }
+    else alert("❌ Gagal menonaktifkan shift.");
+  }));
+}
+
+function showShiftModal() {
+  document.getElementById("shiftModalTitle").textContent = "+ Tambah Shift";
+  document.getElementById("shiftEditId").value = "";
+  document.getElementById("shiftForm").reset();
+  document.getElementById("shiftStart").value = "08:00";
+  document.getElementById("shiftEnd").value = "16:00";
+  document.getElementById("shiftTolerance").value = "15";
+  document.getElementById("shiftActive").checked = true;
+  document.getElementById("shiftModal").style.display = "flex";
+}
+function hideShiftModal() { document.getElementById("shiftModal").style.display = "none"; }
+
+function editShift(id) {
+  const s = _shifts.find(x => x.id === id);
+  if (!s) return;
+  document.getElementById("shiftModalTitle").textContent = "✏️ Edit Shift";
+  document.getElementById("shiftEditId").value = id;
+  document.getElementById("shiftName").value = s.name;
+  document.getElementById("shiftStart").value = s.start;
+  document.getElementById("shiftEnd").value = s.end;
+  document.getElementById("shiftTolerance").value = s.tolerance;
+  document.getElementById("shiftDays").value = s.days || "";
+  document.getElementById("shiftActive").checked = s.active !== false;
+  document.getElementById("shiftModal").style.display = "flex";
+}
+
+async function saveShift(e) {
+  e.preventDefault();
+  const btn = document.getElementById("saveShiftBtn");
+  btn.disabled = true; btn.textContent = "Menyimpan...";
+  const editId = document.getElementById("shiftEditId").value;
+  const payload = {
+    name: document.getElementById("shiftName").value,
+    start: document.getElementById("shiftStart").value,
+    end: document.getElementById("shiftEnd").value,
+    tolerance: Number(document.getElementById("shiftTolerance").value),
+    days: document.getElementById("shiftDays").value || "Senin-Sabtu",
+    active: document.getElementById("shiftActive").checked
+  };
+  try {
+    const url = editId ? `/absensi/api/admin/shifts/${editId}` : "/absensi/api/admin/shifts";
+    const method = editId ? "PATCH" : "POST";
+    const res = await authFetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    if (res && res.ok) { hideShiftModal(); renderShifts(); if (state.view === "dashboard") renderDashboard(); }
+    else { const d = await res.json(); alert(`❌ ${d.message || "Gagal"}`); }
+  } catch { alert("❌ Gagal terhubung ke server."); }
+  finally { btn.disabled = false; btn.textContent = "Simpan"; }
 }
 
 // ── RECORDS ──

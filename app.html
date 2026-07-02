@@ -358,9 +358,10 @@
                   <th>Jam Masuk</th>
                   <th>Jam Pulang</th>
                   <th>Toleransi</th>
-                  <th>Hari Berlaku</th>
+                  <th>Hari Kerja</th>
                   <th>Karyawan</th>
                   <th>Status</th>
+                  <th>Aksi</th>
                 </tr>
               </thead>
               <tbody id="shiftRows"></tbody>
@@ -554,6 +555,51 @@
           <div class="field" style="grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end">
             <button class="button" id="cancelLeaveBtn" type="button">Batal</button>
             <button class="button primary" id="saveLeaveBtn" type="submit">Simpan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ══ MODAL TAMBAH SHIFT ══ -->
+    <div class="modal-backdrop" id="shiftModal" aria-hidden="true">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="shiftModalTitle">
+        <div class="modal-heading">
+          <h2 id="shiftModalTitle">+ Tambah Shift</h2>
+          <button class="icon-button" id="closeShiftModal" type="button" aria-label="Tutup">✕</button>
+        </div>
+        <form id="shiftForm" class="form-grid" style="padding:18px;">
+          <label class="field">
+            <span>Nama Shift</span>
+            <input type="text" id="shiftName" required placeholder="Contoh: Shift Reguler">
+          </label>
+          <div class="field-group" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <label class="field">
+              <span>Jam Masuk</span>
+              <input type="time" id="shiftStart" required value="08:00">
+            </label>
+            <label class="field">
+              <span>Jam Pulang</span>
+              <input type="time" id="shiftEnd" required value="16:00">
+            </label>
+          </div>
+          <div class="field-group" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <label class="field">
+              <span>Toleransi (menit)</span>
+              <input type="number" id="shiftTolerance" required value="15" min="0" max="120">
+            </label>
+            <label class="field">
+              <span>Hari Kerja</span>
+              <input type="text" id="shiftDays" placeholder="Senin-Sabtu">
+            </label>
+          </div>
+          <label class="field" style="flex-direction:row;align-items:center;gap:8px">
+            <input type="checkbox" id="shiftActive" checked>
+            <span>Aktif</span>
+          </label>
+          <input type="hidden" id="shiftEditId" value="">
+          <div class="field" style="grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end">
+            <button class="button" id="cancelShiftBtn" type="button">Batal</button>
+            <button class="button primary" id="saveShiftBtn" type="submit">Simpan</button>
           </div>
         </form>
       </div>
