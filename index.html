@@ -3,17 +3,20 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Lelap Absensi</title>
+    <title>Lelap Absensi — Mom Baby Care Salatiga</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
+    <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="Buka menu">☰</button>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
     <div class="app-shell">
-      <aside class="sidebar" aria-label="Menu utama">
+      <aside class="sidebar" id="sidebar" aria-label="Menu utama">
         <div class="brand">
           <div class="brand-mark">LA</div>
           <div>
             <strong>Lelap Absensi</strong>
-            <span>Mom Baby Care</span>
+            <span>Mom Baby Care · Salatiga</span>
           </div>
         </div>
 
@@ -30,6 +33,10 @@
             <span class="nav-icon" aria-hidden="true">B</span>
             Monitoring Bulanan
           </button>
+          <button class="nav-item" data-view="records" type="button">
+            <span class="nav-icon" aria-hidden="true">R</span>
+            Data Absensi
+          </button>
           <button class="nav-item" data-view="employees" type="button">
             <span class="nav-icon" aria-hidden="true">K</span>
             Data Karyawan
@@ -37,6 +44,14 @@
           <button class="nav-item" data-view="shifts" type="button">
             <span class="nav-icon" aria-hidden="true">S</span>
             Jadwal Shift
+          </button>
+          <button class="nav-item" data-view="leave" type="button">
+            <span class="nav-icon" aria-hidden="true">I</span>
+            Izin / Sakit / Cuti
+          </button>
+          <button class="nav-item" data-view="reports" type="button">
+            <span class="nav-icon" aria-hidden="true">L</span>
+            Laporan &amp; Export
           </button>
           <button class="nav-item" data-view="settings" type="button">
             <span class="nav-icon" aria-hidden="true">P</span>
@@ -60,34 +75,32 @@
               <span>Tanggal</span>
               <input id="globalDate" type="date">
             </label>
-            <button class="button primary" id="exportCurrent" type="button">Export</button>
+            <button class="button primary" id="exportCurrent" type="button">📥 Export</button>
             <button class="button" id="logoutAdmin" type="button">Keluar</button>
           </div>
         </header>
 
+        <!-- ══ DASHBOARD RINGKASAN ══ -->
         <section class="view active" id="dashboardView" aria-labelledby="pageTitle">
           <div class="metric-grid" id="metricGrid"></div>
-
           <div class="dashboard-grid">
             <section class="panel">
               <div class="panel-heading">
-                <h2>Belum Absen Masuk</h2>
+                <h2>❌ Belum Absen Masuk</h2>
                 <button class="link-button" data-shortcut="daily" data-status="Belum Absen" type="button">Lihat detail</button>
               </div>
               <div class="person-list" id="missingCheckIn"></div>
             </section>
-
             <section class="panel">
               <div class="panel-heading">
-                <h2>Karyawan Telat</h2>
+                <h2>🕒 Karyawan Telat</h2>
                 <button class="link-button" data-shortcut="daily" data-status="Telat" type="button">Lihat detail</button>
               </div>
               <div class="person-list" id="lateList"></div>
             </section>
-
             <section class="panel">
               <div class="panel-heading">
-                <h2>Absensi Homecare</h2>
+                <h2>🏠 Absensi Homecare</h2>
                 <button class="link-button" data-shortcut="daily" data-homecare="true" type="button">Lihat detail</button>
               </div>
               <div class="person-list" id="homecareList"></div>
@@ -95,34 +108,31 @@
           </div>
         </section>
 
+        <!-- ══ MONITORING HARIAN ══ -->
         <section class="view" id="dailyView" aria-labelledby="pageTitle">
           <div class="toolbar">
-            <label class="field">
+            <label class="field compact">
               <span>Karyawan</span>
               <input id="dailySearch" type="search" placeholder="Cari nama">
             </label>
-            <label class="field">
+            <label class="field compact">
               <span>Status</span>
               <select id="dailyStatus"></select>
             </label>
-            <label class="field">
+            <label class="field compact">
               <span>Shift</span>
               <select id="dailyShift"></select>
             </label>
             <label class="check-field">
-              <input id="dailyHomecare" type="checkbox">
-              Homecare
+              <input id="dailyHomecare" type="checkbox"> Homecare
             </label>
             <label class="check-field">
-              <input id="dailyLate" type="checkbox">
-              Telat
+              <input id="dailyLate" type="checkbox"> Telat
             </label>
             <label class="check-field">
-              <input id="dailyReview" type="checkbox">
-              Perlu review
+              <input id="dailyReview" type="checkbox"> Perlu review
             </label>
           </div>
-
           <div class="table-wrap">
             <table class="data-table">
               <thead>
@@ -136,6 +146,7 @@
                   <th>Pulang</th>
                   <th>Foto Pulang</th>
                   <th>Lokasi Pulang</th>
+                  <th>Homecare</th>
                   <th>Catatan</th>
                   <th>Aksi</th>
                 </tr>
@@ -145,44 +156,44 @@
           </div>
         </section>
 
+        <!-- ══ MONITORING BULANAN ══ -->
         <section class="view" id="monthlyView" aria-labelledby="pageTitle">
           <div class="toolbar">
-            <label class="field">
+            <label class="field compact">
               <span>Bulan</span>
               <select id="monthSelect"></select>
             </label>
-            <label class="field">
+            <label class="field compact">
               <span>Tahun</span>
               <input id="yearInput" type="number" min="2024" max="2035">
             </label>
-            <label class="field">
+            <label class="field compact">
               <span>Karyawan</span>
               <input id="monthlySearch" type="search" placeholder="Cari nama">
             </label>
-            <label class="field">
+            <label class="field compact">
               <span>Status</span>
               <select id="monthlyStatus"></select>
             </label>
             <label class="check-field">
-              <input id="monthlyHomecare" type="checkbox">
-              Homecare
+              <input id="monthlyHomecare" type="checkbox"> Homecare
             </label>
             <label class="check-field">
-              <input id="monthlyReview" type="checkbox">
-              Perlu review
+              <input id="monthlyReview" type="checkbox"> Perlu review
             </label>
           </div>
-
           <div class="legend">
             <span><i class="status-dot complete"></i> Hadir lengkap</span>
             <span><i class="status-dot late"></i> Telat</span>
             <span><i class="status-dot incomplete"></i> Tidak lengkap</span>
             <span><i class="status-dot missing"></i> Belum absen</span>
-            <span><i class="status-dot leave"></i> Izin/Sakit/Cuti</span>
+            <span><i class="status-dot leave"></i> Izin</span>
+            <span><i class="status-dot sakit"></i> Sakit</span>
+            <span><i class="status-dot cuti"></i> Cuti</span>
             <span><i class="status-dot homecare"></i> Homecare</span>
-            <span><i class="status-dot review"></i> Review</span>
+            <span><i class="status-dot dayoff"></i> Libur shift</span>
+            <span><i class="status-dot review"></i> Perlu review</span>
           </div>
-
           <div class="table-wrap monthly-wrap">
             <table class="data-table monthly-table">
               <thead id="monthlyHead"></thead>
@@ -191,9 +202,57 @@
           </div>
         </section>
 
+        <!-- ══ DATA ABSENSI ══ -->
+        <section class="view" id="recordsView" aria-labelledby="pageTitle">
+          <div class="toolbar">
+            <label class="field compact">
+              <span>Karyawan</span>
+              <input id="recordsSearch" type="search" placeholder="Cari nama">
+            </label>
+            <label class="field compact">
+              <span>Tanggal Mulai</span>
+              <input id="recordsFrom" type="date">
+            </label>
+            <label class="field compact">
+              <span>Tanggal Selesai</span>
+              <input id="recordsTo" type="date">
+            </label>
+            <label class="field compact">
+              <span>Jenis</span>
+              <select id="recordsType">
+                <option value="">Semua</option>
+                <option value="check_in">Masuk</option>
+                <option value="check_out">Pulang</option>
+              </select>
+            </label>
+            <button class="button primary" id="recordsExport" type="button">📥 Export</button>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Karyawan</th>
+                  <th>Jenis</th>
+                  <th>Tanggal</th>
+                  <th>Jam</th>
+                  <th>Hari</th>
+                  <th>Foto</th>
+                  <th>Lokasi</th>
+                  <th>Status</th>
+                  <th>Device ID</th>
+                  <th>Risiko</th>
+                </tr>
+              </thead>
+              <tbody id="recordsRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ══ DATA KARYAWAN ══ -->
         <section class="view" id="employeesView" aria-labelledby="pageTitle">
           <div class="toolbar">
-            <button class="button primary" id="addEmployee" type="button">Tambah Karyawan</button>
+            <button class="button primary" id="addEmployee" type="button">+ Tambah Karyawan</button>
             <button class="button" id="resetDevice" type="button">Reset Device ID</button>
           </div>
           <div class="table-wrap">
@@ -205,8 +264,10 @@
                   <th>HP</th>
                   <th>Jabatan</th>
                   <th>Shift Default</th>
+                  <th>Bergabung</th>
                   <th>Device ID</th>
                   <th>Status</th>
+                  <th>Aksi</th>
                 </tr>
               </thead>
               <tbody id="employeeRows"></tbody>
@@ -214,9 +275,10 @@
           </div>
         </section>
 
+        <!-- ══ JADWAL SHIFT ══ -->
         <section class="view" id="shiftsView" aria-labelledby="pageTitle">
           <div class="toolbar">
-            <button class="button primary" id="addShift" type="button">Tambah Shift</button>
+            <button class="button primary" id="addShift" type="button">+ Tambah Shift</button>
             <button class="button" id="copySchedule" type="button">Copy Jadwal</button>
           </div>
           <div class="table-wrap">
@@ -237,23 +299,97 @@
           </div>
         </section>
 
+        <!-- ══ IZIN / SAKIT / CUTI ══ -->
+        <section class="view" id="leaveView" aria-labelledby="pageTitle">
+          <div class="toolbar">
+            <button class="button primary" id="addLeave" type="button">+ Tambah Izin/Sakit/Cuti</button>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Karyawan</th>
+                  <th>Tipe</th>
+                  <th>Mulai</th>
+                  <th>Selesai</th>
+                  <th>Alasan</th>
+                  <th>Status</th>
+                  <th>Disetujui Oleh</th>
+                  <th>Catatan</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="leaveRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ══ LAPORAN & EXPORT ══ -->
+        <section class="view" id="reportsView" aria-labelledby="pageTitle">
+          <div class="dashboard-grid">
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>📅 Laporan Harian</h2>
+              </div>
+              <div class="settings-list">
+                <div class="setting-row">
+                  <div><strong>Export Excel Harian</strong><span class="muted">Data absensi per hari</span></div>
+                  <button class="button primary" id="reportDailyExcel" type="button">Export</button>
+                </div>
+                <div class="setting-row">
+                  <div><strong>Export PDF Harian</strong><span class="muted">Rekap harian untuk owner</span></div>
+                  <button class="button" id="reportDailyPdf" type="button">Export</button>
+                </div>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>📊 Laporan Bulanan</h2>
+              </div>
+              <div class="settings-list">
+                <div class="setting-row">
+                  <div><strong>Export Excel Bulanan</strong><span class="muted">Rekap karyawan vs tanggal 1-31</span></div>
+                  <button class="button primary" id="reportMonthlyExcel" type="button">Export</button>
+                </div>
+                <div class="setting-row">
+                  <div><strong>Export PDF Bulanan</strong><span class="muted">Laporan siap cetak</span></div>
+                  <button class="button" id="reportMonthlyPdf" type="button">Export</button>
+                </div>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>📸 Export Foto Absensi</h2>
+              </div>
+              <div class="settings-list">
+                <div class="setting-row">
+                  <div><strong>ZIP Foto Bulanan</strong><span class="muted">Semua foto absensi periode tertentu</span></div>
+                  <button class="button" id="reportPhotoZip" type="button">Export</button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <!-- ══ PENGATURAN ══ -->
         <section class="view" id="settingsView" aria-labelledby="pageTitle">
           <div class="settings-grid">
             <section class="panel">
-              <h2>Lokasi Kantor</h2>
+              <h2>📍 Lokasi Kantor</h2>
               <div class="settings-list" id="officeSettings"></div>
             </section>
             <section class="panel">
-              <h2>Admin Awal</h2>
+              <h2>👤 Admin &amp; Keamanan</h2>
               <div class="settings-list" id="adminSettings"></div>
             </section>
             <section class="panel">
-              <h2>Proteksi MVP</h2>
+              <h2>🛡️ Proteksi Anti-Kecurangan</h2>
               <div class="settings-list" id="securitySettings"></div>
             </section>
           </div>
         </section>
 
+        <!-- ══ AUDIT LOG ══ -->
         <section class="view" id="auditView" aria-labelledby="pageTitle">
           <div class="table-wrap">
             <table class="data-table">
@@ -275,6 +411,7 @@
       </main>
     </div>
 
+    <!-- ══ MODAL DETAIL ABSENSI ══ -->
     <div class="modal-backdrop" id="detailModal" aria-hidden="true">
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
         <div class="modal-heading">
@@ -282,30 +419,31 @@
             <p class="eyebrow" id="detailDate"></p>
             <h2 id="detailTitle"></h2>
           </div>
-          <button class="icon-button" id="closeDetail" type="button" aria-label="Tutup detail">X</button>
+          <button class="icon-button" id="closeDetail" type="button" aria-label="Tutup">✕</button>
         </div>
         <div class="detail-grid" id="detailContent"></div>
         <div class="modal-actions">
-          <button class="button" id="detailExport" type="button">Export Detail</button>
-          <button class="button primary" id="openCorrection" type="button">Koreksi Status</button>
+          <button class="button" id="detailExport" type="button">📥 Export Detail</button>
+          <button class="button primary" id="openCorrection" type="button">✏️ Koreksi Status</button>
         </div>
       </div>
     </div>
 
+    <!-- ══ MODAL KOREKSI ══ -->
     <div class="modal-backdrop" id="correctionModal" aria-hidden="true">
       <div class="modal narrow" role="dialog" aria-modal="true" aria-labelledby="correctionTitle">
         <div class="modal-heading">
-          <h2 id="correctionTitle">Koreksi Absensi</h2>
-          <button class="icon-button" id="closeCorrection" type="button" aria-label="Tutup koreksi">X</button>
+          <h2 id="correctionTitle">✏️ Koreksi Absensi</h2>
+          <button class="icon-button" id="closeCorrection" type="button" aria-label="Tutup">✕</button>
         </div>
-        <form id="correctionForm" class="form-grid">
+        <form id="correctionForm" class="form-grid" style="padding:18px;">
           <label class="field">
             <span>Status Baru</span>
             <select id="correctionStatus"></select>
           </label>
           <label class="field">
-            <span>Catatan Admin</span>
-            <textarea id="correctionNote" rows="4" required></textarea>
+            <span>Alasan Koreksi</span>
+            <textarea id="correctionNote" rows="4" required placeholder="Wajib diisi — contoh: Lupa absen, HP error, GPS tidak akurat..."></textarea>
           </label>
           <button class="button primary" type="submit">Simpan Koreksi</button>
         </form>

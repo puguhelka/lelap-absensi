@@ -145,8 +145,11 @@ const views = {
   dashboard: { title: "Dashboard Ringkasan", element: "dashboardView" },
   daily: { title: "Monitoring Harian", element: "dailyView" },
   monthly: { title: "Monitoring Bulanan", element: "monthlyView" },
+  records: { title: "Data Absensi", element: "recordsView" },
   employees: { title: "Data Karyawan", element: "employeesView" },
   shifts: { title: "Jadwal Shift", element: "shiftsView" },
+  leave: { title: "Izin / Sakit / Cuti", element: "leaveView" },
+  reports: { title: "Laporan & Export", element: "reportsView" },
   settings: { title: "Pengaturan Lokasi dan Admin", element: "settingsView" },
   audit: { title: "Audit Log", element: "auditView" }
 };
@@ -173,8 +176,24 @@ function hydrateControls() {
 }
 
 function bindEvents() {
+  // Sidebar toggle for mobile
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("sidebarOverlay");
+  document.getElementById("sidebarToggle").addEventListener("click", () => {
+    sidebar.classList.toggle("open");
+    overlay.classList.toggle("open");
+  });
+  overlay.addEventListener("click", () => {
+    sidebar.classList.remove("open");
+    overlay.classList.remove("open");
+  });
+
   document.querySelectorAll(".nav-item").forEach((button) => {
-    button.addEventListener("click", () => setView(button.dataset.view));
+    button.addEventListener("click", () => {
+      sidebar.classList.remove("open");
+      overlay.classList.remove("open");
+      setView(button.dataset.view);
+    });
   });
 
   document.querySelectorAll("[data-shortcut]").forEach((button) => {
@@ -257,8 +276,11 @@ function renderAll() {
   renderDashboard();
   renderDaily();
   renderMonthly();
+  renderRecords();
   renderEmployees();
   renderShifts();
+  renderLeave();
+  renderReports();
   renderSettings();
   renderAudit();
 }
@@ -431,7 +453,7 @@ function renderEmployees() {
 function renderShifts() {
   document.getElementById("shiftRows").innerHTML = shifts
     .map((shift) => {
-      const assigned = employees.filter((employee) => employee.defaultShiftId === shift.id).map((employee) => employee.name).join(", ");
+      const assigned = employees.filter((item) => item.defaultShiftId === shift.id);
       return `
         <tr>
           <td><strong>${shift.name}</strong></td>
@@ -439,12 +461,93 @@ function renderShifts() {
           <td>${shift.end}</td>
           <td>${shift.tolerance} menit</td>
           <td>${shift.days}</td>
-          <td>${assigned || "-"}</td>
-          <td><span class="badge complete">${shift.active ? "Aktif" : "Nonaktif"}</span></td>
+          <td>${assigned.map((item) => item.name).join(", ") || "-"}</td>
+          <td><span class="badge ${shift.active ? "complete" : "missing"}">${shift.active ? "Aktif" : "Nonaktif"}</span></td>
         </tr>
       `;
     })
     .join("");
+}
+
+function renderRecords() {
+  const rows = state.attendanceRecords || [];
+  const search = (document.getElementById("recordsSearch")?.value || "").toLowerCase();
+  const from = document.getElementById("recordsFrom")?.value || "";
+  const to = document.getElementById("recordsTo")?.value || "";
+  const type = document.getElementById("recordsType")?.value || "";
+
+  let filtered = rows;
+  if (search) filtered = filtered.filter((r) => getEmployee(r.employeeId)?.name?.toLowerCase().includes(search));
+  if (from) filtered = filtered.filter((r) => r.date >= from);
+  if (to) filtered = filtered.filter((r) => r.date <= to);
+  if (type) filtered = filtered.filter((r) => r.type === type);
+
+  document.getElementById("recordsRows").innerHTML = filtered.length
+    ? filtered.slice(0, 100).map((r, i) => {
+        const emp = getEmployee(r.employeeId);
+        return `
+          <tr>
+            <td>${i + 1}</td>
+            <td><strong>${emp?.name || "—"}</strong></td>
+            <td><span class="badge ${r.type === "check_in" ? "complete" : "late"}">${r.type === "check_in" ? "Masuk" : "Pulang"}</span></td>
+            <td>${r.date}</td>
+            <td>${r.time || "—"}</td>
+            <td>${r.day || "—"}</td>
+            <td>${r.photo ? `<div class="photo-thumb" style="background:#e2e8f0;font-size:10px;display:grid;place-items:center">📸</div>` : "—"}</td>
+            <td>${r.location || "—"}</td>
+            <td><span class="badge ${r.status === "submitted" ? "complete" : "missing"}">${r.status || "—"}</span></td>
+            <td style="font-size:11px;color:var(--ink-secondary)">${r.deviceId || "—"}</td>
+            <td>${r.isMock ? `<span class="badge review">⚠️ Fake GPS</span>` : `<span class="badge complete">Normal</span>`}</td>
+          </tr>
+        `;
+      }).join("")
+    : `<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--muted)">Belum ada data absensi. Gunakan filter di atas.</td></tr>`;
+
+  document.getElementById("recordsExport")?.addEventListener("click", () => {
+    alert("Export data absensi akan terhubung ke backend.");
+  });
+}
+
+function renderLeave() {
+  const sampleLeaves = [
+    { employee: "Rina Aprilia", type: "izin", start: "2026-07-01", end: "2026-07-01", reason: "Ada urusan keluarga", status: "approved", approvedBy: "Puguh Legowo", note: "" },
+    { employee: "Sari Wulandari", type: "sakit", start: "2026-06-28", end: "2026-06-29", reason: "Demam", status: "approved", approvedBy: "Puguh Legowo", note: "Surat dokter menyusul" }
+  ];
+  document.getElementById("leaveRows").innerHTML = sampleLeaves.length
+    ? sampleLeaves.map((l) => `
+        <tr>
+          <td><strong>${l.employee}</strong></td>
+          <td><span class="badge ${l.type === "izin" ? "leave-izin" : l.type === "sakit" ? "leave-sakit" : "leave-cuti"}">${l.type.charAt(0).toUpperCase() + l.type.slice(1)}</span></td>
+          <td>${l.start}</td>
+          <td>${l.end}</td>
+          <td>${l.reason}</td>
+          <td><span class="badge complete">Disetujui</span></td>
+          <td>${l.approvedBy}</td>
+          <td>${l.note || "—"}</td>
+          <td><button class="button" type="button">Detail</button></td>
+        </tr>
+      `).join("")
+    : `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--muted)">Belum ada data izin/sakit/cuti.</td></tr>`;
+
+  document.getElementById("addLeave")?.addEventListener("click", () => {
+    alert("Form tambah izin/sakit/cuti akan terhubung ke backend.");
+  });
+}
+
+function renderReports() {
+  // Report buttons — already have IDs in HTML
+  ["reportDailyExcel", "reportDailyPdf", "reportMonthlyExcel", "reportMonthlyPdf", "reportPhotoZip"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("click", () => {
+      const labels = {
+        reportDailyExcel: "Export Excel Harian",
+        reportDailyPdf: "Export PDF Harian",
+        reportMonthlyExcel: "Export Excel Bulanan",
+        reportMonthlyPdf: "Export PDF Bulanan",
+        reportPhotoZip: "Export ZIP Foto"
+      };
+      alert(`${labels[id] || "Export"} akan terhubung ke backend.`);
+    });
+  });
 }
 
 function renderSettings() {

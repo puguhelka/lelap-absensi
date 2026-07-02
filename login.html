@@ -3,34 +3,33 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Login Admin - Lelap Absensi</title>
+    <title>Login Admin — Lelap Absensi</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body class="login-page">
     <main class="login-shell">
       <section class="login-panel">
-        <div class="brand login-brand">
+        <div class="login-brand">
           <div class="brand-mark">LA</div>
           <div>
             <strong>Lelap Absensi</strong>
-            <span>Dashboard Admin</span>
+            <span>Mom Baby Care · Salatiga</span>
           </div>
         </div>
-
         <h1>Masuk Admin</h1>
         <p class="login-copy">Dashboard absensi hanya dapat diakses oleh owner/admin yang terdaftar.</p>
 
         <form id="adminLoginForm" class="form-grid">
           <label class="field">
             <span>Email Admin</span>
-            <input id="loginEmail" name="email" type="email" autocomplete="email" required>
+            <input id="loginEmail" name="email" type="email" autocomplete="email" required placeholder="contoh@email.com">
           </label>
           <label class="field">
             <span>Password</span>
-            <input id="loginPassword" name="password" type="password" autocomplete="current-password" required>
+            <input id="loginPassword" name="password" type="password" autocomplete="current-password" required placeholder="••••••••">
           </label>
           <p class="form-error" id="loginError" role="alert"></p>
-          <button class="button primary" type="submit">Masuk Dashboard</button>
+          <button class="button primary" type="submit" style="justify-content:center;min-height:42px;font-size:15px">Masuk Dashboard</button>
         </form>
       </section>
     </main>
