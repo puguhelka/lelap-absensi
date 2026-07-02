@@ -238,7 +238,7 @@ function bindEvents() {
 
 async function logoutAdmin() {
   try {
-    await fetch("/api/auth/logout", {
+    await fetch("/absensi/api/auth/logout", {
       method: "POST",
       headers: adminAuthHeaders()
     });

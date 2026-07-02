@@ -48,8 +48,18 @@ const server = createServer(async (req, res) => {
 
     const url = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
 
-    if (url.pathname.startsWith("/api/")) {
+    // Support both /absensi/api/... and /api/... paths (proxy + direct)
+    const rawPath = url.pathname;
+    let apiPath = rawPath;
+    if (apiPath.startsWith("/absensi/")) {
+      apiPath = apiPath.replace("/absensi", "");
+    }
+
+    if (apiPath.startsWith("/api/")) {
+      // Temporarily rewrite for API routing
+      url.pathname = apiPath;
       await handleApi(req, res, url);
+      url.pathname = rawPath; // restore for serveStatic
       return;
     }
 
