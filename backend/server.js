@@ -290,6 +290,127 @@ async function handleAdmin(req, res, method, path, url, body, segments) {
     return;
   }
 
+  // ── NEW: Attendance Records ──
+  if (method === "GET" && path === "/api/admin/attendance/records") {
+    const from = url.searchParams.get("from") || "";
+    const to = url.searchParams.get("to") || "";
+    const employeeId = url.searchParams.get("employee_id") ? Number(url.searchParams.get("employee_id")) : null;
+    let records = store.attendanceRecords.slice();
+    if (from) records = records.filter(r => r.attendanceDate >= from);
+    if (to) records = records.filter(r => r.attendanceDate <= to);
+    if (employeeId) records = records.filter(r => r.employeeId === employeeId);
+    records.sort((a, b) => b.serverTime.localeCompare(a.serverTime));
+    sendJson(res, 200, records.map(r => ({
+      id: r.id, employeeId: r.employeeId, type: r.attendanceType,
+      date: r.attendanceDate, time: r.attendanceTime,
+      day: dayName(r.attendanceDate),
+      photo: r.photoPath || null, location: r.locationType || (r.latitude ? `${r.latitude},${r.longitude}` : null),
+      status: r.status || "submitted", deviceId: r.deviceId || null, isMock: r.isMockLocation || false
+    })));
+    return;
+  }
+
+  // ── NEW: Attendance Detail by Employee+Date ──
+  if (method === "GET" && path === "/api/admin/attendance/detail") {
+    const empId = Number(url.searchParams.get("employee_id"));
+    const date = url.searchParams.get("date");
+    if (!empId || !date) { sendJson(res, 422, { error: "validation_error", message: "employee_id dan date wajib." }); return; }
+    const emp = store.employees.find(e => e.id === empId);
+    if (!emp) { sendJson(res, 404, { error: "not_found", message: "Karyawan tidak ditemukan." }); return; }
+    const summary = store.dailyAttendanceSummaries.find(s => s.employeeId === empId && s.attendanceDate === date);
+    const records = store.attendanceRecords.filter(r => r.employeeId === empId && r.attendanceDate === date);
+    const shift = shiftForEmployee(empId, date);
+    const leave = leaveForDate(empId, date);
+    sendJson(res, 200, {
+      employee: enrichEmployee(emp), summary: summary ? enrichSummary(summary) : null,
+      records: records.sort((a, b) => a.serverTime.localeCompare(b.serverTime)),
+      shift, leave
+    });
+    return;
+  }
+
+  // ── NEW: Employee Leaves ──
+  if (method === "GET" && path === "/api/admin/employee-leaves") {
+    const leaves = (store.employeeLeaves || []).slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    sendJson(res, 200, leaves.map(l => ({
+      ...l, employeeName: store.employees.find(e => e.id === l.employeeId)?.fullName || "—"
+    })));
+    return;
+  }
+
+  if (method === "POST" && path === "/api/admin/employee-leaves") {
+    const { employeeId, leaveType, startDate, endDate, reason, status } = body;
+    if (!employeeId || !leaveType || !startDate || !endDate) {
+      sendJson(res, 422, { error: "validation_error", message: "employeeId, leaveType, startDate, endDate wajib." });
+      return;
+    }
+    if (!["izin","sakit","cuti"].includes(leaveType)) {
+      sendJson(res, 422, { error: "validation_error", message: "leaveType harus izin/sakit/cuti." });
+      return;
+    }
+    const emp = store.employees.find(e => e.id === employeeId);
+    if (!emp) { sendJson(res, 404, { error: "not_found", message: "Karyawan tidak ditemukan." }); return; }
+    const now = nowIso();
+    const leave = {
+      id: nextId("employeeLeaves"), employeeId: Number(employeeId), leaveType, startDate,
+      endDate, reason: reason || "", status: status || "approved",
+      createdAt: now, updatedAt: now
+    };
+    store.employeeLeaves = store.employeeLeaves || [];
+    store.employeeLeaves.push(leave);
+    audit(context.user.id, "leave.created", "employeeLeaves", leave.id, null, leave, "Admin membuat izin/cuti.");
+    saveStore();
+    sendJson(res, 201, { ...leave, employeeName: emp.fullName });
+    return;
+  }
+
+  if (method === "PATCH" && segments[2] === "employee-leaves" && segments[3]) {
+    const leaveId = Number(segments[3]);
+    const leave = (store.employeeLeaves || []).find(l => l.id === leaveId);
+    if (!leave) { sendJson(res, 404, { error: "not_found", message: "Data izin tidak ditemukan." }); return; }
+    const old = { ...leave };
+    if (body.leaveType) leave.leaveType = body.leaveType;
+    if (body.startDate) leave.startDate = body.startDate;
+    if (body.endDate) leave.endDate = body.endDate;
+    if (body.reason !== undefined) leave.reason = body.reason;
+    if (body.status) leave.status = body.status;
+    leave.updatedAt = nowIso();
+    audit(context.user.id, "leave.updated", "employeeLeaves", leave.id, old, leave, "Admin memperbarui izin/cuti.");
+    saveStore();
+    sendJson(res, 200, { ...leave, employeeName: store.employees.find(e => e.id === leave.employeeId)?.fullName || "—" });
+    return;
+  }
+
+  if (method === "DELETE" && segments[2] === "employee-leaves" && segments[3]) {
+    const leaveId = Number(segments[3]);
+    const idx = (store.employeeLeaves || []).findIndex(l => l.id === leaveId);
+    if (idx === -1) { sendJson(res, 404, { error: "not_found", message: "Data izin tidak ditemukan." }); return; }
+    const leave = store.employeeLeaves.splice(idx, 1)[0];
+    audit(context.user.id, "leave.deleted", "employeeLeaves", leave.id, leave, null, "Admin menghapus izin/cuti.");
+    saveStore();
+    sendJson(res, 200, { ok: true, message: "Izin/cuti berhasil dihapus." });
+    return;
+  }
+
+  // ── NEW: Office Settings ──
+  if (method === "GET" && path === "/api/admin/office") {
+    sendJson(res, 200, store.office || { name: "Kantor", address: "", latitude: "", longitude: "", radiusMeter: 20 });
+    return;
+  }
+
+  if (method === "PATCH" && path === "/api/admin/office") {
+    const office = store.office || {};
+    if (body.name !== undefined) office.name = body.name;
+    if (body.address !== undefined) office.address = body.address;
+    if (body.latitude !== undefined) office.latitude = body.latitude;
+    if (body.longitude !== undefined) office.longitude = body.longitude;
+    if (body.radiusMeter !== undefined) office.radiusMeter = Number(body.radiusMeter);
+    store.office = office;
+    saveStore();
+    sendJson(res, 200, office);
+    return;
+  }
+
   sendJson(res, 404, { error: "not_found", message: "Endpoint admin tidak ditemukan." });
 }
 

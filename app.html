@@ -519,6 +519,46 @@
       </div>
     </div>
 
-    <script src="app_v3.js"></script>
+    <!-- ══ MODAL TAMBAH IZIN/SAKIT/CUTI ══ -->
+    <div class="modal-backdrop" id="leaveModal" aria-hidden="true">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="leaveModalTitle">
+        <div class="modal-heading">
+          <h2 id="leaveModalTitle">+ Tambah Izin/Sakit/Cuti</h2>
+          <button class="icon-button" id="closeLeaveModal" type="button" aria-label="Tutup">✕</button>
+        </div>
+        <form id="leaveForm" class="form-grid" style="padding:18px;">
+          <label class="field">
+            <span>Karyawan</span>
+            <select id="leaveEmployee" required></select>
+          </label>
+          <label class="field">
+            <span>Tipe</span>
+            <select id="leaveType" required>
+              <option value="izin">Izin</option>
+              <option value="sakit">Sakit</option>
+              <option value="cuti">Cuti</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Tanggal Mulai</span>
+            <input type="date" id="leaveStart" required>
+          </label>
+          <label class="field">
+            <span>Tanggal Selesai</span>
+            <input type="date" id="leaveEnd" required>
+          </label>
+          <label class="field">
+            <span>Alasan</span>
+            <textarea id="leaveReason" rows="3" placeholder="Opsional"></textarea>
+          </label>
+          <div class="field" style="grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end">
+            <button class="button" id="cancelLeaveBtn" type="button">Batal</button>
+            <button class="button primary" id="saveLeaveBtn" type="submit">Simpan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script src="app_v5.js"></script>
   </body>
 </html>
