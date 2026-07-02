@@ -256,10 +256,25 @@ function bindEvents() {
   document.getElementById("deleteConfirmInput").addEventListener("input", (e) => {
     document.getElementById("deleteConfirmBtn").disabled = e.target.value !== "HAPUS";
   });
-  document.getElementById("deleteConfirmBtn").addEventListener("click", confirmDeleteEmployee);
+  document.getElementById("deleteConfirmBtn").addEventListener("click", () => {
+    if (deleteTargetId !== null) {
+      confirmDeleteEmployee();
+    } else if (bulkDeleteIds.length > 0) {
+      confirmBulkDelete();
+    }
+  });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") hideDeleteModal();
   });
+
+  // Select all / bulk
+  document.getElementById("selectAllEmployees").addEventListener("change", (e) => {
+    document.querySelectorAll(".employee-checkbox").forEach((cb) => {
+      cb.checked = e.target.checked;
+    });
+    updateBulkDeleteButton();
+  });
+  document.getElementById("bulkDeleteEmployee").addEventListener("click", showBulkDeleteModal);
   document.getElementById("addShift").addEventListener("click", () => {
     alert("Form shift akan disambungkan ke POST /api/admin/shifts.");
   });
@@ -453,6 +468,7 @@ function renderEmployees() {
       document.getElementById("employeeRows").innerHTML = apiEmployees.length
         ? apiEmployees.map((emp) => `
             <tr>
+              <td><input type="checkbox" class="employee-checkbox" value="${emp.id}"></td>
               <td><strong>${emp.fullName}</strong><br><span class="muted">${emp.joinedDate}</span></td>
               <td>${emp.email || "—"}</td>
               <td>${emp.phone || "—"}</td>
@@ -465,9 +481,9 @@ function renderEmployees() {
               </td>
             </tr>
           `).join("")
-        : `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--muted)">Belum ada data karyawan.</td></tr>`;
+        : `<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--muted)">Belum ada data karyawan.</td></tr>`;
 
-      // Bind delete buttons
+      // Bind single delete buttons
       document.querySelectorAll("[data-delete-id]").forEach((btn) => {
         btn.addEventListener("click", () => {
           const id = Number(btn.dataset.deleteId);
@@ -475,10 +491,66 @@ function renderEmployees() {
           showDeleteModal(id, name);
         });
       });
+
+      // Bind checkboxes
+      document.querySelectorAll(".employee-checkbox").forEach((cb) => {
+        cb.addEventListener("change", updateBulkDeleteButton);
+      });
+      updateBulkDeleteButton();
     })
     .catch(() => {
-      document.getElementById("employeeRows").innerHTML = `<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--muted)">Gagal memuat data karyawan.</td></tr>`;
+      document.getElementById("employeeRows").innerHTML = `<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--muted)">Gagal memuat data karyawan.</td></tr>`;
     });
+}
+
+// ── BULK DELETE ──────────────────────────────────────────────
+let bulkDeleteIds = [];
+
+function updateBulkDeleteButton() {
+  const checked = document.querySelectorAll(".employee-checkbox:checked");
+  const btn = document.getElementById("bulkDeleteEmployee");
+  bulkDeleteIds = Array.from(checked).map((cb) => Number(cb.value));
+  btn.disabled = bulkDeleteIds.length === 0;
+  btn.textContent = bulkDeleteIds.length > 0
+    ? `🗑️ Hapus ${bulkDeleteIds.length} Terpilih`
+    : "🗑️ Hapus Terpilih";
+}
+
+function showBulkDeleteModal() {
+  if (bulkDeleteIds.length === 0) return;
+  document.getElementById("deleteEmployeeName").textContent = `${bulkDeleteIds.length} karyawan`;
+  document.getElementById("deleteModalMessage").innerHTML = `Yakin ingin menghapus <strong>${bulkDeleteIds.length} karyawan</strong> terpilih?`;
+  document.getElementById("deleteConfirmInput").value = "";
+  document.getElementById("deleteConfirmBtn").disabled = true;
+  document.getElementById("deleteModal").style.display = "flex";
+  deleteTargetId = null; // Clear single delete target
+}
+
+async function confirmBulkDelete() {
+  if (bulkDeleteIds.length === 0) return;
+  const btn = document.getElementById("deleteConfirmBtn");
+  btn.disabled = true;
+  btn.textContent = "Menghapus...";
+  try {
+    const res = await fetch("/absensi/api/admin/employees/bulk-delete", {
+      method: "POST",
+      headers: { ...adminAuthHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: bulkDeleteIds })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(`✅ ${data.message}`);
+      hideDeleteModal();
+      renderEmployees();
+    } else {
+      alert(`❌ ${data.message || "Gagal menghapus."}`);
+    }
+  } catch {
+    alert("❌ Gagal terhubung ke server.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Hapus";
+  }
 }
 
 // ── DELETE MODAL ──────────────────────────────────────────────

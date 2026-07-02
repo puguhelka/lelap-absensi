@@ -254,12 +254,14 @@
         <section class="view" id="employeesView" aria-labelledby="pageTitle">
           <div class="toolbar">
             <button class="button primary" id="addEmployee" type="button">+ Tambah Karyawan</button>
+            <button class="button danger" id="bulkDeleteEmployee" type="button" disabled>🗑️ Hapus Terpilih</button>
             <button class="button" id="resetDevice" type="button">Reset Device ID</button>
           </div>
           <div class="table-wrap">
-            <table class="data-table">
+            <table class="data-table" id="employeeTable">
               <thead>
                 <tr>
+                  <th style="width:40px"><input type="checkbox" id="selectAllEmployees"></th>
                   <th>Nama</th>
                   <th>Email</th>
                   <th>HP</th>

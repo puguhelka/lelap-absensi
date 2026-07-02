@@ -255,6 +255,11 @@ async function handleAdmin(req, res, method, path, url, body, segments) {
     return;
   }
 
+  if (method === "POST" && path === "/api/admin/employees/bulk-delete") {
+    bulkDeleteEmployees(res, context.user, body);
+    return;
+  }
+
   if (method === "GET" && path === "/api/admin/shifts") {
     sendJson(res, 200, store.shifts);
     return;
@@ -552,6 +557,59 @@ function deleteEmployee(res, admin, employeeId) {
   audit(admin.id, "employee.deleted", "employees", employeeId, employee, null, `Admin menghapus karyawan: ${employee.fullName}`);
   saveStore();
   sendJson(res, 200, { ok: true, message: `Karyawan ${employee.fullName} berhasil dihapus.` });
+}
+
+// ── BULK DELETE EMPLOYEES ────────────────────────────────────
+function bulkDeleteEmployees(res, admin, body) {
+  const ids = body.ids || [];
+  if (!Array.isArray(ids) || ids.length === 0) {
+    sendJson(res, 422, { error: "validation_error", message: "ids wajib berupa array dan tidak boleh kosong." });
+    return;
+  }
+
+  const results = { deleted: [], skipped: [], errors: [] };
+
+  ids.forEach((employeeId) => {
+    const index = store.employees.findIndex((item) => item.id === employeeId);
+    if (index === -1) {
+      results.errors.push({ id: employeeId, reason: "not_found" });
+      return;
+    }
+
+    const employee = store.employees[index];
+    const user = store.users.find((item) => item.id === employee.userId);
+
+    // Skip admin accounts
+    if (user && adminEmails.includes(user.email.toLowerCase())) {
+      results.skipped.push({ id: employeeId, name: employee.fullName, reason: "akun admin" });
+      return;
+    }
+
+    // Remove user + sessions
+    if (user) {
+      store.users = store.users.filter((item) => item.id !== user.id);
+      store.sessions = store.sessions.filter((item) => item.userId !== user.id);
+    }
+
+    // Clean attendance data
+    store.attendanceRecords = store.attendanceRecords.filter((item) => item.employeeId !== employeeId);
+    store.dailyAttendanceSummaries = store.dailyAttendanceSummaries.filter((item) => item.employeeId !== employeeId);
+    store.employeeSchedules = store.employeeSchedules.filter((item) => item.employeeId !== employeeId);
+    store.deviceResetRequests = (store.deviceResetRequests || []).filter((item) => item.employeeId !== employeeId);
+
+    // Remove employee
+    store.employees.splice(index, 1);
+    results.deleted.push({ id: employeeId, name: employee.fullName });
+
+    audit(admin.id, "employee.deleted", "employees", employeeId, employee, null, `Admin menghapus karyawan: ${employee.fullName}`);
+  });
+
+  saveStore();
+  sendJson(res, 200, {
+    ok: true,
+    message: `${results.deleted.length} karyawan berhasil dihapus.${results.skipped.length ? ` ${results.skipped.length} dilewati (admin).` : ""}${results.errors.length ? ` ${results.errors.length} gagal.` : ""}`,
+    results
+  });
 }
 
 function createEmployee(res, admin, body) {
