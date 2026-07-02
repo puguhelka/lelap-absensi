@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Login Admin — Lelap Absensi</title>
     <base href="/absensi/">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles_v2.css">
   </head>
   <body class="login-page">
     <main class="login-shell">
@@ -67,7 +67,7 @@
           }
 
           localStorage.setItem("lelapAdminToken", payload.token);
-          window.location.href = "/absensi";
+          window.location.href = "/absensi/app/";
         } catch (error) {
           errorBox.textContent = error.message;
           button.disabled = false;

@@ -1018,7 +1018,14 @@ function sendFile(res, filePath) {
   const ext = extname(filePath).toLowerCase();
   const contentType = mimeMap[ext] || "application/octet-stream";
   const content = readFileSync(filePath);
-  res.writeHead(200, { "Content-Type": contentType, "Cache-Control": "no-cache, no-store, must-revalidate" });
+  const isHtml = ext === ".html";
+  const cacheControl = isHtml ? "public, max-age=0, must-revalidate" : "public, max-age=0, must-revalidate";
+  const surrogate = isHtml ? "max-age=0" : "max-age=14400";
+  res.writeHead(200, {
+    "Content-Type": contentType,
+    "Cache-Control": cacheControl,
+    "Surrogate-Control": surrogate
+  });
   res.end(content);
 }
 
@@ -1291,15 +1298,21 @@ async function serveStatic(req, res, url) {
     return;
   }
 
-  const dashboardPath = originalPathname === "/absensi" || originalPathname === "/absensi/" || originalPathname === "/index.html";
+  const dashboardPath = originalPathname === "/absensi/app" || originalPathname === "/absensi/app/" || originalPathname === "/app.html";
   if (dashboardPath && !isAdminRequest(req)) {
     redirect(res, "/absensi/login");
     return;
   }
 
+  // Redirect /absensi → /absensi/app/ for cache bust
+  if (originalPathname === "/absensi" || originalPathname === "/absensi/") {
+    redirect(res, "/absensi/app/");
+    return;
+  }
+
   let pathname = originalPathname;
-  if (pathname === "/absensi" || pathname === "/absensi/") {
-    pathname = "/index.html";
+  if (pathname === "/absensi/app" || pathname === "/absensi/app/") {
+    pathname = "/app.html";
   }
 
   if (pathname.startsWith("/absensi/")) {
