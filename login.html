@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Login Admin - Lelap Absensi</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body class="login-page">
+    <main class="login-shell">
+      <section class="login-panel">
+        <div class="brand login-brand">
+          <div class="brand-mark">LA</div>
+          <div>
+            <strong>Lelap Absensi</strong>
+            <span>Dashboard Admin</span>
+          </div>
+        </div>
+
+        <h1>Masuk Admin</h1>
+        <p class="login-copy">Dashboard absensi hanya dapat diakses oleh owner/admin yang terdaftar.</p>
+
+        <form id="adminLoginForm" class="form-grid">
+          <label class="field">
+            <span>Email Admin</span>
+            <input id="loginEmail" name="email" type="email" autocomplete="email" required>
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <input id="loginPassword" name="password" type="password" autocomplete="current-password" required>
+          </label>
+          <p class="form-error" id="loginError" role="alert"></p>
+          <button class="button primary" type="submit">Masuk Dashboard</button>
+        </form>
+      </section>
+    </main>
+
+    <script>
+      const form = document.getElementById("adminLoginForm");
+      const errorBox = document.getElementById("loginError");
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        errorBox.textContent = "";
+        const button = form.querySelector("button");
+        button.disabled = true;
+        button.textContent = "Memeriksa...";
+
+        try {
+          const response = await fetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: document.getElementById("loginEmail").value,
+              password: document.getElementById("loginPassword").value
+            })
+          });
+          const payload = await response.json();
+
+          if (!response.ok) {
+            throw new Error(payload.message || "Login gagal.");
+          }
+
+          if (payload.user.role !== "admin") {
+            await fetch("/api/auth/logout", { method: "POST" });
+            throw new Error("Akun ini bukan admin.");
+          }
+
+          localStorage.setItem("lelapAdminToken", payload.token);
+          window.location.href = "/absensi";
+        } catch (error) {
+          errorBox.textContent = error.message;
+          button.disabled = false;
+          button.textContent = "Masuk Dashboard";
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+[Unit]
+Description=Lelap Absensi Backend
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/lelap-absensi/backend
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=COOKIE_SECURE=true
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target

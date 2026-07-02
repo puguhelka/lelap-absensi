@@ -1,0 +1,4 @@
+data/store.json
+uploads/
+*.log
+.env
