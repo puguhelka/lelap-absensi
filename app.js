@@ -242,7 +242,51 @@ function bindEvents() {
   document.getElementById("correctionForm").addEventListener("submit", saveCorrection);
 
   document.getElementById("addEmployee").addEventListener("click", () => {
-    alert("Form tambah karyawan akan disambungkan ke POST /api/admin/employees pada tahap backend.");
+    document.getElementById("addEmployeeForm").reset();
+    document.getElementById("empJoinedDate").value = new Date().toISOString().slice(0, 10);
+    document.getElementById("addEmployeeModal").style.display = "flex";
+  });
+  document.getElementById("cancelAddEmployee").addEventListener("click", () => {
+    document.getElementById("addEmployeeModal").style.display = "none";
+  });
+  document.getElementById("addEmployeeModal").addEventListener("click", (e) => {
+    if (e.target.id === "addEmployeeModal") document.getElementById("addEmployeeModal").style.display = "none";
+  });
+  document.getElementById("addEmployeeForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById("saveAddEmployee");
+    btn.disabled = true;
+    btn.textContent = "Menyimpan...";
+    try {
+      const payload = {
+        fullName: document.getElementById("empFullName").value.trim(),
+        email: document.getElementById("empEmail").value.trim(),
+        password: document.getElementById("empPassword").value,
+        position: document.getElementById("empPosition").value.trim() || undefined,
+        phone: document.getElementById("empPhone").value.trim() || undefined,
+        employeeCode: document.getElementById("empCode").value.trim() || undefined,
+        joinedDate: document.getElementById("empJoinedDate").value || undefined,
+        notes: document.getElementById("empNotes").value.trim() || undefined
+      };
+      const res = await fetch("/absensi/api/admin/employees", {
+        method: "POST",
+        headers: { ...adminAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert("✅ Karyawan berhasil ditambahkan!");
+        document.getElementById("addEmployeeModal").style.display = "none";
+        renderEmployees();
+      } else {
+        alert(`❌ ${data.message || "Gagal menambahkan karyawan."}`);
+      }
+    } catch {
+      alert("❌ Gagal terhubung ke server.");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Simpan";
+    }
   });
   document.getElementById("resetDevice").addEventListener("click", () => {
     alert("Reset device akan disambungkan ke PATCH /api/admin/employees/{id}/reset-device.");

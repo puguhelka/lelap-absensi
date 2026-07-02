@@ -1221,7 +1221,7 @@ function saveStore() {
 
 function defaultStore() {
   return {
-    sequences: { users: 0, employees: 0, shifts: 0, attendanceRecords: 0, dailyAttendanceSummaries: 0, sessions: 0, deviceResetRequests: 0, employeeLeaves: 0, employeeSchedules: 0, auditLogs: 0 },
+    sequences: { users: 5, employees: 3, shifts: 4, attendanceRecords: 0, dailyAttendanceSummaries: 0, sessions: 0, deviceResetRequests: 0, employeeLeaves: 0, employeeSchedules: 0, auditLogs: 0 },
     users: [
       { id: 1, name: "Puguh Legowo", email: "puguh.legowo.k@gmail.com", passwordHash: hashPassword("Admin123!"), role: "admin", phone: null, isActive: true, lastLoginAt: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
       { id: 2, name: "Finna Refina", email: "refinna.sari.86@gmail.com", passwordHash: hashPassword("Admin123!"), role: "admin", phone: null, isActive: true, lastLoginAt: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },

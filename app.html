@@ -278,6 +278,55 @@
           </div>
         </section>
 
+        <!-- ══ MODAL TAMBAH KARYAWAN ══ -->
+        <div class="modal-overlay" id="addEmployeeModal" style="display:none">
+          <div class="modal-box" style="max-width:520px">
+            <h3>➕ Tambah Karyawan Baru</h3>
+            <form id="addEmployeeForm" class="form-grid" style="margin-top:12px">
+              <label class="field">
+                <span>Nama Lengkap <span class="required">*</span></span>
+                <input type="text" id="empFullName" required placeholder="Contoh: Sari Wulandari">
+              </label>
+              <label class="field">
+                <span>Email <span class="required">*</span></span>
+                <input type="email" id="empEmail" required placeholder="contoh@lelap.web.id">
+              </label>
+              <label class="field">
+                <span>Password <span class="required">*</span></span>
+                <input type="password" id="empPassword" required placeholder="Min. 6 karakter">
+              </label>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <label class="field">
+                  <span>Jabatan</span>
+                  <input type="text" id="empPosition" placeholder="Terapis Baby Care">
+                </label>
+                <label class="field">
+                  <span>No. HP</span>
+                  <input type="text" id="empPhone" placeholder="0812-xxxx-xxxx">
+                </label>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <label class="field">
+                  <span>Kode Karyawan</span>
+                  <input type="text" id="empCode" placeholder="Otomatis jika kosong">
+                </label>
+                <label class="field">
+                  <span>Tanggal Bergabung</span>
+                  <input type="date" id="empJoinedDate">
+                </label>
+              </div>
+              <label class="field">
+                <span>Catatan</span>
+                <textarea id="empNotes" rows="2" placeholder="Opsional"></textarea>
+              </label>
+              <div class="modal-actions" style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+                <button class="button" id="cancelAddEmployee" type="button">Batal</button>
+                <button class="button primary" id="saveAddEmployee" type="submit">Simpan</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
         <!-- ══ MODAL HAPUS KARYAWAN ══ -->
         <div class="modal-overlay" id="deleteModal" style="display:none">
           <div class="modal-box">

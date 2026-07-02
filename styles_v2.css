@@ -248,6 +248,7 @@ textarea { height: auto; padding: 10px; resize: vertical; }
 .person-row strong { display: block; font-size: 14px; }
 .person-row .muted { font-size: 12px; }
 .muted { color: var(--ink-secondary); }
+.required { color: var(--red); font-weight: 600; margin-left: 2px; }
 
 /* ── Tables ── */
 .table-wrap {
