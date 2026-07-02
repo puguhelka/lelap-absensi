@@ -1020,7 +1020,7 @@ function sendFile(res, filePath) {
   const content = readFileSync(filePath);
   const isHtml = ext === ".html";
   const cacheControl = isHtml ? "public, max-age=0, must-revalidate" : "public, max-age=0, must-revalidate";
-  const surrogate = isHtml ? "max-age=0" : "max-age=14400";
+  const surrogate = "max-age=0";
   res.writeHead(200, {
     "Content-Type": contentType,
     "Cache-Control": cacheControl,
@@ -1221,18 +1221,22 @@ function saveStore() {
 
 function defaultStore() {
   return {
-    sequences: { users: 5, employees: 3, shifts: 4, attendanceRecords: 0, dailyAttendanceSummaries: 0, sessions: 0, deviceResetRequests: 0, employeeLeaves: 0, employeeSchedules: 0, auditLogs: 0 },
+    sequences: { users: 7, employees: 5, shifts: 4, attendanceRecords: 0, dailyAttendanceSummaries: 0, sessions: 0, deviceResetRequests: 0, employeeLeaves: 0, employeeSchedules: 0, auditLogs: 0 },
     users: [
       { id: 1, name: "Puguh Legowo", email: "puguh.legowo.k@gmail.com", passwordHash: hashPassword("Admin123!"), role: "admin", phone: null, isActive: true, lastLoginAt: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
       { id: 2, name: "Finna Refina", email: "refinna.sari.86@gmail.com", passwordHash: hashPassword("Admin123!"), role: "admin", phone: null, isActive: true, lastLoginAt: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
       { id: 3, name: "Sari Wulandari", email: "sari@lelap.web.id", passwordHash: hashPassword("Karyawan123!"), role: "employee", phone: "0812-1100-2233", isActive: true, lastLoginAt: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
       { id: 4, name: "Dinda Permata", email: "dinda@lelap.web.id", passwordHash: hashPassword("Karyawan123!"), role: "employee", phone: "0813-2200-3344", isActive: true, lastLoginAt: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
-      { id: 5, name: "Maya Lestari", email: "maya@lelap.web.id", passwordHash: hashPassword("Karyawan123!"), role: "employee", phone: "0821-3300-4455", isActive: true, lastLoginAt: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }
+      { id: 5, name: "Maya Lestari", email: "maya@lelap.web.id", passwordHash: hashPassword("Karyawan123!"), role: "employee", phone: "0821-3300-4455", isActive: true, lastLoginAt: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 6, name: "Rina Aprilia", email: "rina@lelap.web.id", passwordHash: hashPassword("Karyawan123!"), role: "employee", phone: "0857-4400-5566", isActive: true, lastLoginAt: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 7, name: "Tika Handayani", email: "tika@lelap.web.id", passwordHash: hashPassword("Karyawan123!"), role: "employee", phone: "0878-5500-6677", isActive: true, lastLoginAt: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }
     ],
     employees: [
       { id: 1, userId: 3, employeeCode: "EMP-0001", fullName: "Sari Wulandari", position: "Terapis Baby Care", phone: "0812-1100-2233", profilePhoto: null, defaultShiftId: 1, registeredDeviceId: null, joinedDate: "2025-09-12", status: "active", notes: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
       { id: 2, userId: 4, employeeCode: "EMP-0002", fullName: "Dinda Permata", position: "Terapis Mom Care", phone: "0813-2200-3344", profilePhoto: null, defaultShiftId: 2, registeredDeviceId: null, joinedDate: "2025-11-04", status: "active", notes: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
-      { id: 3, userId: 5, employeeCode: "EMP-0003", fullName: "Maya Lestari", position: "Admin Front Office", phone: "0821-3300-4455", profilePhoto: null, defaultShiftId: 1, registeredDeviceId: null, joinedDate: "2024-06-18", status: "active", notes: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }
+      { id: 3, userId: 5, employeeCode: "EMP-0003", fullName: "Maya Lestari", position: "Admin Front Office", phone: "0821-3300-4455", profilePhoto: null, defaultShiftId: 1, registeredDeviceId: null, joinedDate: "2024-06-18", status: "active", notes: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 4, userId: 6, employeeCode: "EMP-0004", fullName: "Rina Aprilia", position: "Terapis Homecare", phone: "0857-4400-5566", profilePhoto: null, defaultShiftId: 4, registeredDeviceId: null, joinedDate: "2026-01-06", status: "active", notes: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+      { id: 5, userId: 7, employeeCode: "EMP-0005", fullName: "Tika Handayani", position: "Terapis Baby Spa", phone: "0878-5500-6677", profilePhoto: null, defaultShiftId: 3, registeredDeviceId: null, joinedDate: "2026-03-15", status: "active", notes: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }
     ],
     shifts: [
       { id: 1, name: "Shift Reguler", start: "08:00", end: "16:00", tolerance: 15, days: "Senin-Sabtu", active: true, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
